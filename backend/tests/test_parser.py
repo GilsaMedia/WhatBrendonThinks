@@ -19,6 +19,15 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(stats['participants'][0]['messages'], 2)
         self.assertEqual(stats['participants'][0]['questions'], 1)
 
+    def test_poll_and_event_lines_are_not_people(self):
+        raw = ('[06/11/2026, 14:06:00] נרי: סקר:\nמה עושים בשבת?\nאפשרות: ים (3 הצבעות)\nאפשרות: בית (1 הצבעות)\n'
+               '[06/11/2026, 14:10:00] דנדי: אירוע:\nתיאור האירוע: מנגל\nמיקום האירוע: הפארק\nשעת ההתחלה של האירוע: 20:00\n'
+               '[06/11/2026, 14:14:00] אדם: מאחורי ההצעה עומד רעיון פשוט: לנוח')
+        result = parse_chat(raw.encode(), 'chat.txt')
+        self.assertEqual([m['sender'] for m in result], ['נרי', 'דנדי', 'אדם'])
+        self.assertIn('אפשרות: ים', result[0]['text'])
+        self.assertEqual(result[2]['text'], 'מאחורי ההצעה עומד רעיון פשוט: לנוח')
+
     def test_android_am_pm_unicode(self):
         raw = '\u200e6/11/26, 2:06 PM - Alex: hey\n6/11/26, 2:07 PM - יעל: שלום\n6/11/26, 2:08 PM - Alex: hi'
         result = parse_chat(raw.encode(), 'chat.txt')
