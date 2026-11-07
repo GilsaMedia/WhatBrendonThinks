@@ -28,6 +28,32 @@ class ParserTests(unittest.TestCase):
         self.assertIn('אפשרות: ים', result[0]['text'])
         self.assertEqual(result[2]['text'], 'מאחורי ההצעה עומד רעיון פשוט: לנוח')
 
+    def test_only_typed_text_is_kept(self):
+        raw = ('[06/11/2026, 20:44:47] גיל: \u200e<attached: 00026612-PHOTO-2026-11-06-20-44-47.jpg> פלוס אז כאילו\n'
+               '[06/11/2026, 20:45:00] יובל: \u200e<attached: 00026613-AUDIO-2026-11-06-20-45-00.opus>\n'
+               '[06/11/2026, 20:46:00] יובל: \u200eMissed voice call, \u200eTap to call back\n'
+               '[06/11/2026, 20:47:00] גיל: שיחה קולית שלא נענתה\n'
+               '[06/11/2026, 20:48:00] יובל: סבבה אני אבקש מאבא\n'
+               '[06/11/2026, 20:49:00] גיל: \u200eimage omitted\n'
+               '[06/11/2026, 20:50:00] יובל: הודעה זו נמחקה\n'
+               '[06/11/2026, 20:51:00] גיל: https://www.whatbrandonthinks.com/c/2105811f/reports/1\n'
+               '[06/11/2026, 20:52:00] גיל: חחחחחחח <This message was edited>\n'
+               '[06/11/2026, 20:53:00] יובל: שיחה קולית מחר בשמונה? https://meet.example.com/x')
+        result = parse_chat(raw.encode(), 'chat.txt')
+        self.assertEqual([m['text'] for m in result],
+                         ['פלוס אז כאילו', 'סבבה אני אבקש מאבא', 'חחחחחחח', 'שיחה קולית מחר בשמונה? https://meet.example.com/x'])
+        self.assertEqual([m['id'] for m in result], [1, 2, 3, 4])
+
+    def test_android_media_and_calls_are_dropped(self):
+        raw = ('13/10/2025, 22:10 - Dana: IMG-20251013-WA0001.jpg (file attached)\nlook at this\n'
+               '13/10/2025, 22:11 - Omer: <Media omitted>\n'
+               '13/10/2025, 22:12 - Omer: Voice call, 12 min\n'
+               '13/10/2025, 22:13 - Dana: null\n'
+               '13/10/2025, 22:14 - Omer: video call tonight?\n'
+               '13/10/2025, 22:15 - Dana: sure')
+        result = parse_chat(raw.encode(), 'chat.txt')
+        self.assertEqual([m['text'] for m in result], ['look at this', 'video call tonight?', 'sure'])
+
     def test_android_am_pm_unicode(self):
         raw = '\u200e6/11/26, 2:06 PM - Alex: hey\n6/11/26, 2:07 PM - יעל: שלום\n6/11/26, 2:08 PM - Alex: hi'
         result = parse_chat(raw.encode(), 'chat.txt')

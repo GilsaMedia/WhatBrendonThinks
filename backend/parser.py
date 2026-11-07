@@ -22,6 +22,43 @@ LINE = re.compile(r'^(\d{1,2}:\d{2})\t([^\t]{1,100})\t(.*)$')
 PLAIN = re.compile(r'^([^:\n]{1,80}):\s+(.+)$')
 SYSTEM = re.compile(r'(?i)(messages and calls are end-to-end encrypted|created group|added you|changed the subject|security code changed)')
 
+# Only what people typed is analysed. Attachment markers are cut out of a
+# message (a photo's caption stays); messages left with nothing typed, calls,
+# deletions, locations and bare links are dropped.
+ATTACHMENT = re.compile(
+    r'<(?:attached|מצורף|adjunto|anexo|pièce jointe|allegato|angehängt)[^<>]*>'  # iOS <attached: …>
+    r'|\S+\.[A-Za-z0-9]{2,5}\s*\((?:file attached|קובץ מצורף|archivo adjunto|arquivo anexado|fichier joint|file allegato|Datei angehängt)\)'  # Android
+    r'|\b(?:IMG|VID|PTT|AUD|STK|DOC)-\d{8}-WA\d+\.[A-Za-z0-9]{2,5}\b'
+    r'|\b\d{8}-(?:PHOTO|VIDEO|AUDIO|STICKER|GIF|CONTACT[ -]CARD|DOCUMENT)-[\w.-]+'
+    r'|<(?:this message was edited|ההודעה נערכה|se editó este mensaje|mensagem editada|message modifié)>',
+    re.IGNORECASE)
+NOT_TEXT = re.compile(r'(?is)^(?:'
+    # Calls, in WhatsApp (English and Hebrew) and Meta wording.
+    # A call notice is the call type alone or followed by its details ("Voice call, 12 min").
+    r'(?:missed |silenced )?(?:group )?(?:voice|video) call(?:\s*[,.•·].*)?'
+    r'|שיח[הת] (?:קולית|וידאו)(?: קבוצתית)?(?: שלא נענתה)?(?:\s*[,.•·].*)?'
+    r'|(?:llamada|chamada)(?: perdida)? de (?:voz|v[ií]deo)(?:\s*[,.•·].*)?|appel (?:vocal|vidéo)(?: manqué)?(?:\s*[,.•·].*)?'
+    r'|.{1,100} (?:called you|missed your call|missed a call)\.?|you called .{1,100}|the (?:video )?(?:call|chat) ended\.?'
+    # Media left out of the export.
+    r'|<?(?:media omitted|המדיה לא נכללה|המדיה הושמטה|multimedia omitido|mídia oculta|médias omis)>?'
+    r'|.{0,200}?\b(?:image|photo|video|audio|sticker|gif|document|contact card|video note)s? omitted'
+    r'|(?:תמונה|סרטון|קטע שמע|הודעה קולית|מדבקה|gif|מסמך|כרטיס איש קשר)\s+הושמט(?:ה)?'
+    r'|.{1,100} sent (?:a photo|an attachment|a video|a voice message|an audio clip|a gif|a sticker|a link)\.?'
+    r'|reacted .{1,20} to (?:your|a) message|liked a message'
+    # Deleted, pending and view-once messages.
+    r'|this message was deleted\.?|you deleted this message\.?|הודעה זו נמחקה\.?|מחקת את ההודעה הזו\.?'
+    r'|waiting for this message.*|ממתין להודעה זו.*|null'
+    # Locations and bare links.
+    r'|(?:location|מיקום|ubicación|localização): https?://\S+|live location shared|מיקום בזמן אמת.*'
+    r'|https?://\S+'
+    r')$')
+
+
+def text_only(text):
+    """The typed part of a message, or '' when it has none."""
+    text = ATTACHMENT.sub('', text.replace('‎', '').replace('‏', '')).strip()
+    return '' if NOT_TEXT.match(text) else text
+
 
 def decode(data):
     if data.startswith((b'\xff\xfe', b'\xfe\xff')):
@@ -64,7 +101,9 @@ def parse_chat(data: bytes, filename: str):
         messages = parse_content(decode(data), filename)
     if messages and all(m['timestamp'].isdigit() for m in messages):
         messages.sort(key=lambda m: int(m['timestamp']))
-    messages = [m for m in messages if m['text'].strip() and not SYSTEM.search(m['text'])]
+    for m in messages:
+        m['text'] = text_only(m['text'])
+    messages = [m for m in messages if m['text'] and not SYSTEM.search(m['text'])]
     if len(messages) < 3:
         raise ValueError('At least three messages are needed. Try a full text export with sender names.')
     if len(messages) > MAX_MESSAGES:
