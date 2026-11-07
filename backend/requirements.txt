@@ -4,3 +4,4 @@ httpx==0.28.1
 python-multipart==0.0.32
 
 starlette==1.10.0
+anthropic==2.3.0

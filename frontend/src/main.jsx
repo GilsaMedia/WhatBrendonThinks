@@ -129,7 +129,7 @@ const faqs = [
   ],
   [
     "Does my chat leave my server?",
-    "The frontend sends your export to the server address you configure. That server stores it in SQLite and sends text to its configured Ollama instance. With Ollama running on that same machine, analysis stays there. GitHub Pages only hosts the interface.",
+    "The frontend sends your chat text to the server address you configure, which stores it in SQLite. When the server has an Anthropic API key, it sends the text to Claude (Anthropic's API) to write the report. Otherwise it uses a local Ollama model, and analysis stays on that machine. The last setup step tells you which one your server uses. GitHub Pages only hosts the interface.",
   ],
   [
     "Which files can I upload?",
@@ -137,11 +137,11 @@ const faqs = [
   ],
   [
     "Will it read my whole chat?",
-    "Every parsed message is processed. Long exports are split into chunks and their evidence summaries are combined into one report. Fine detail can be lost during summarisation. Follow-up questions use the report and relevant original messages.",
+    "With Claude, Brandon reads the whole chat when it fits; longer chats start from a spread sample and Brandon reads, searches and profiles the rest with tools before writing. With a local model, every message is processed in chunks whose summaries are combined, so fine detail can be lost. Follow-up questions can look up the original messages.",
   ],
   [
     "Is the AI free?",
-    "The app uses a model running locally through Ollama, with no per-request AI API fee. Your computer or server supplies the memory, processing power and electricity. Hardware affects speed. There is no paywall in this edition.",
+    "There is no paywall in this edition. With a local Ollama model there is no per-report fee; your server supplies the processing power. With Claude, each report is billed to the server owner's Anthropic account, roughly cents to a dollar or two depending on the chat's length.",
   ],
   [
     "Can I delete a chat?",
@@ -822,9 +822,13 @@ function ServerSettings({ onSaved }) {
         {result && (
           <div className="notice success">
             <CheckCircle2 size={19} />
-            {result.ai_ready
-              ? "Connected. Your local AI is ready."
-              : `Connected. Download or start ${result.model} in Ollama.`}
+            {result.provider === "claude"
+              ? result.ai_ready
+                ? `Connected. Brandon runs on ${result.model}.`
+                : "Connected. Set ANTHROPIC_API_KEY on the server to use Claude."
+              : result.ai_ready
+                ? "Connected. Your local AI is ready."
+                : `Connected. Download or start ${result.model} in Ollama.`}
           </div>
         )}
         <div className="button-row">
@@ -1036,15 +1040,27 @@ function Wizard({
     [text, setText] = useState(""),
     [consent, setConsent] = useState(false),
     [drag, setDrag] = useState(false),
-    [preparing, setPreparing] = useState(null);
+    [preparing, setPreparing] = useState(null),
+    [engine, setEngine] = useState(null);
   const input = useRef();
+  // The consent note names where the text goes, so ask the server which AI it uses.
+  useEffect(() => {
+    if (step !== 7 || engine) return;
+    api("/health")
+      .then((h) => setEngine(h.provider || "local"))
+      .catch(() => {});
+  }, [step, engine]);
   useEffect(() => {
     setError("");
   }, [step]);
   // Every later step needs the counted chat; send people back to upload after a reload.
+  // Earlier answers live only in memory, so after a reload send people back to
+  // the first step that is missing; otherwise "Create my report" stays disabled.
   useEffect(() => {
-    if (step > 3 && !file?.preview) navigate("/setup/3");
-  }, [step, file]);
+    if (step > 1 && !draft.context) navigate("/setup/1");
+    else if (step > 2 && !draft.platform) navigate("/setup/2");
+    else if (step > 3 && !file?.preview) navigate("/setup/3");
+  }, [step, file, draft.context, draft.platform]);
   const update = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
   const next = () => navigate("/setup/" + (step + 1));
   const people = file?.preview?.participants || [];
@@ -1101,9 +1117,12 @@ function Wizard({
           ([from, to]) => to.trim() && to.trim() !== from,
         ),
       );
+      // In a group, saying which one is you is optional.
       const identity = draft.identity
         ? (names[draft.identity] || draft.identity).trim()
-        : "Observer";
+        : group
+          ? ""
+          : "Observer";
       const body = new FormData();
       body.append("file", file.upload);
       body.append(
@@ -1128,7 +1147,7 @@ function Wizard({
         : step === 3
           ? !!file?.preview && preparing === null
           : step === 4
-            ? draft.identity !== ""
+            ? group || draft.identity !== ""
             : true;
   const topShare = people[0]?.messages || 1;
   return (
@@ -1387,7 +1406,11 @@ function Wizard({
                 <Pencil size={17} />
               </label>
             )}
-            <p className="muted step-sub">Tap your name so Brandon knows which one is you.</p>
+            <p className="muted step-sub">
+              {group
+                ? "Optional: tap your name if you’re in it, or just continue."
+                : "Tap your name so Brandon knows which one is you."}
+            </p>
             <div className="people-list">
               {people.slice(0, 60).map((p, i) => (
                 <button
@@ -1396,7 +1419,12 @@ function Wizard({
                     "person-row " +
                     (draft.identity === p.name ? "selected" : "")
                   }
-                  onClick={() => update("identity", p.name)}
+                  onClick={() =>
+                    update(
+                      "identity",
+                      group && draft.identity === p.name ? "" : p.name,
+                    )
+                  }
                   aria-pressed={draft.identity === p.name}
                 >
                   <span className="person-top">
@@ -1424,17 +1452,19 @@ function Wizard({
                 </p>
               )}
             </div>
-            <button
-              className={
-                "choice observer " +
-                (draft.identity === "Observer" ? "selected" : "")
-              }
-              onClick={() => update("identity", "Observer")}
-            >
-              <span>👀</span>
-              <strong>I’m not in this chat</strong>
-              {draft.identity === "Observer" && <Check size={18} />}
-            </button>
+            {!group && (
+              <button
+                className={
+                  "choice observer " +
+                  (draft.identity === "Observer" ? "selected" : "")
+                }
+                onClick={() => update("identity", "Observer")}
+              >
+                <span>👀</span>
+                <strong>I’m not in this chat</strong>
+                {draft.identity === "Observer" && <Check size={18} />}
+              </button>
+            )}
           </>
         )}
         {step === 5 && (
@@ -1504,6 +1534,7 @@ function Wizard({
                 value={draft.note}
                 maxLength={2000}
                 rows={5}
+                dir="auto"
                 onChange={(e) => update("note", e.target.value)}
                 placeholder="How do you know each other? Anything you want me to look out for?"
               />
@@ -1516,7 +1547,11 @@ function Wizard({
                 <strong>
                   {getServer() || "your server (connect in Settings)"}
                 </strong>
-                , which stores it and runs the analysis through Ollama.
+                {engine === "claude"
+                  ? ", which stores it and sends it to Claude (Anthropic's API) to write your report."
+                  : engine === "local"
+                    ? ", which stores it and runs the analysis on its own local model."
+                    : ", which stores it and runs the analysis."}
               </span>
             </div>
             <label className="consent">
@@ -1567,7 +1602,9 @@ function Wizard({
               )}
             </Button>
             <p className="field-note center">
-              No payment. No AI API fees. Just your own server doing its thing.
+              {engine === "claude"
+                ? "No payment here. Claude's usage is billed to your server's Anthropic account."
+                : "No payment. No AI API fees. Just your own server doing its thing."}
             </p>
             <button
               className="text-button center"
@@ -2042,7 +2079,7 @@ function InfoPage({ route, start, setModal }) {
         ],
         [
           "How analysis works",
-          "The backend sends text to the Ollama instance configured by the server administrator. Run Ollama locally on that server to keep inference there. No third-party AI API is required. Every parsed message is processed; long exports use hierarchical summaries.",
+          "When the server administrator sets an Anthropic API key, the backend sends chat text to Claude through Anthropic's API, which writes the report and answers follow-ups. Without a key, it uses the server's own Ollama model and the text stays on that server. The last setup step shows which applies.",
         ],
         [
           "Your account",
@@ -2086,7 +2123,7 @@ function InfoPage({ route, start, setModal }) {
         ],
         [
           "Built to live on your terms",
-          "GitHub Pages hosts the interface. Your server stores chats and runs a local model through Ollama. The app includes reports, participant statistics, follow-up questions, downloads and deletion.",
+          "GitHub Pages hosts the interface. Your server stores chats and writes reports with Claude or a local Ollama model. The app includes reports, participant statistics, follow-up questions, downloads and deletion.",
         ],
         [
           "Source and inspiration",
@@ -2104,7 +2141,7 @@ function InfoPage({ route, start, setModal }) {
         ],
         [
           "AI isn’t ready?",
-          "On the server, start Ollama and download the model named in OLLAMA_MODEL. The Settings connection test shows whether the configured model is installed. Retry failed reports after fixing the connection.",
+          "For Claude, set ANTHROPIC_API_KEY on the server and restart the API. For a local model, start Ollama and download the model named in OLLAMA_MODEL. The Settings connection test shows which AI the server uses and whether it is ready. Retry failed reports after fixing it.",
         ],
         [
           "Upload won’t parse?",
