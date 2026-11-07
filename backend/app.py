@@ -52,6 +52,10 @@ def init_db():
         CREATE INDEX IF NOT EXISTS chat_owner ON chats(user_id, created);
         CREATE TABLE IF NOT EXISTS followups(id INTEGER PRIMARY KEY, chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE, question TEXT NOT NULL, answer TEXT NOT NULL);
         ''')
+        # Share links: a secret per report that lets anyone holding it read that report.
+        if 'share_token' not in [r['name'] for r in con.execute('PRAGMA table_info(chats)').fetchall()]:
+            con.execute('ALTER TABLE chats ADD COLUMN share_token TEXT')
+        con.execute('CREATE UNIQUE INDEX IF NOT EXISTS chat_share ON chats(share_token) WHERE share_token IS NOT NULL')
         con.execute("UPDATE chats SET status='queued', progress=0, stage='Resuming after restart' WHERE status='analyzing'")
         con.execute('DELETE FROM sessions WHERE expires < ?', (time.time(),))
 
@@ -91,7 +95,7 @@ def user(request: Request):
 
 
 # The transcript can be hundreds of MB, so only load it where it is needed.
-CHAT_SUMMARY = 'id, user_id, title, filename, metadata, stats, status, progress, stage, report, error, created'
+CHAT_SUMMARY = 'id, user_id, title, filename, metadata, stats, status, progress, stage, report, error, created, share_token'
 
 
 def owned(chat_id, current, with_messages=False):
@@ -108,6 +112,7 @@ def public_chat(row, full=False):
     result = {k: row[k] for k in keys}
     result['stats'] = json.loads(row['stats'])
     result['metadata'] = json.loads(row['metadata'])
+    result['share_token'] = row['share_token']
     if full:
         result['report'] = json.loads(row['report']) if row['report'] else None
         with db() as con:
@@ -306,6 +311,45 @@ async def preview(request: Request, file: UploadFile = File(...)):
 @app.get('/api/chats/{chat_id}')
 async def get_chat(chat_id: str, current=Depends(user)):
     return public_chat(owned(chat_id, current), True)
+
+
+@app.post('/api/chats/{chat_id}/share')
+async def share_chat(chat_id: str, current=Depends(user)):
+    """Return the report's share link token, creating it on first share."""
+    row = owned(chat_id, current)
+    if row['status'] != 'ready':
+        raise HTTPException(409, 'Wait for your report to finish before sharing it.')
+    token = row['share_token']
+    if not token:
+        token = secrets.token_urlsafe(24)
+        with db() as con:
+            con.execute('UPDATE chats SET share_token=? WHERE id=? AND user_id=?', (token, chat_id, current['id']))
+    return {'token': token}
+
+
+@app.delete('/api/chats/{chat_id}/share')
+async def stop_sharing(chat_id: str, current=Depends(user)):
+    owned(chat_id, current)
+    with db() as con:
+        con.execute('UPDATE chats SET share_token=NULL WHERE id=? AND user_id=?', (chat_id, current['id']))
+    return {'ok': True}
+
+
+@app.get('/api/shared/{token}')
+async def shared_report(token: str, request: Request):
+    """A shared report for anyone with its link: no account, read-only."""
+    throttle(request, 'shared', 60)
+    if not 20 <= len(token) <= 64:
+        raise HTTPException(404, 'This share link is invalid or was turned off.')
+    with db() as con:
+        row = con.execute("SELECT title, metadata, stats, report, created FROM chats WHERE share_token=? AND status='ready'", (token,)).fetchone()
+    if not row:
+        raise HTTPException(404, 'This share link is invalid or was turned off.')
+    metadata = json.loads(row['metadata'])
+    # Only what the report page shows: never the backstory, identity, follow-ups or transcript.
+    return {'title': row['title'], 'created': row['created'], 'status': 'ready',
+            'metadata': {'language': metadata.get('language', 'English')},
+            'stats': json.loads(row['stats']), 'report': json.loads(row['report'])}
 
 
 @app.delete('/api/chats/{chat_id}')

@@ -3252,10 +3252,16 @@ textarea {
 .private-note {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   font-size: 13px;
   color: #8a8f99;
   margin-bottom: 30px;
+}
+.private-note .stop-sharing {
+  font-size: 13px;
+  padding: 0;
+  text-decoration: underline;
 }
 .report-article .markdown p {
   font-size: 17px;

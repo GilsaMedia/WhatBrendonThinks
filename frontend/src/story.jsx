@@ -513,18 +513,38 @@ export function parseReport(markdown = "") {
 }
 
 /** The report header: headline, Brandon's byline, sharing and the two summary lists. */
-export function ReportHeader({ chat, parsed, notify, Markdown }) {
+export function shareLink(token) {
+  return `${location.origin}${location.pathname}#/s/${token}`;
+}
+
+export function ReportHeader({ chat, parsed, notify, Markdown, getShareUrl, onStopSharing, shared }) {
   const rtl = isRtl(chat.metadata.language);
+  const [busy, setBusy] = useState(false);
+  // Sharing sends a link: whoever opens it sees the report, no account needed.
   async function share() {
-    const text = `${parsed.title || chat.title}\n\n${chat.report.markdown}`;
+    setBusy(true);
     try {
-      if (navigator.share) await navigator.share({ title: parsed.title || chat.title, text });
-      else {
-        await navigator.clipboard.writeText(text);
-        notify("Report copied. Paste it wherever you like.");
+      const url = await getShareUrl();
+      const title = parsed.title || chat.title;
+      if (navigator.share) {
+        try {
+          await navigator.share({ title, url });
+          return;
+        } catch (e) {
+          if (e?.name === "AbortError") return;
+        }
+      }
+      try {
+        await navigator.clipboard.writeText(url);
+        notify("Link copied. Anyone you send it to can read this report.");
+      } catch {
+        // Some browsers block the clipboard; show the link so it can be copied by hand.
+        window.prompt("Copy this link and send it to anyone:", url);
       }
     } catch (e) {
-      if (e?.name !== "AbortError") notify("Sharing is unavailable here. Download the report instead.");
+      notify(e?.message || "Sharing is unavailable here. Download the report instead.");
+    } finally {
+      setBusy(false);
     }
   }
   return (
@@ -537,11 +557,21 @@ export function ReportHeader({ chat, parsed, notify, Markdown }) {
           <small dir="ltr">AI with no filter, too many opinions and a soft spot for group chats.</small>
         </div>
       </div>
-      <button className="share-button" onClick={share}>
+      <button className="share-button" onClick={share} disabled={busy}>
         <Share2 size={18} /> Share report
       </button>
       <p className="private-note" dir="ltr">
-        <ShieldCheck size={15} /> Stays on your server unless you share it.
+        <ShieldCheck size={15} />
+        {shared
+          ? "Shared with you by link. The chat itself stays private."
+          : chat.share_token
+            ? "Anyone with the link can read this report, never the chat itself."
+            : "Private until you share its link."}
+        {!shared && chat.share_token && onStopSharing && (
+          <button className="text-button stop-sharing" onClick={onStopSharing}>
+            Turn off link
+          </button>
+        )}
       </p>
       {parsed.intro && <Markdown text={parsed.intro} />}
       {parsed.sections.length > 1 && (

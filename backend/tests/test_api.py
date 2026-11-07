@@ -170,6 +170,51 @@ class APITests(unittest.TestCase):
         self.assertNotIn('tone', chat['metadata'])
         self.client.delete('/api/chats/' + response.json()['id'], headers=self.headers)
 
+    def ready_chat(self):
+        # Inserted directly as finished so the background worker never touches it.
+        cid = 'shared-' + os.urandom(4).hex()
+        with self.module.db() as con:
+            uid = con.execute("SELECT id FROM users WHERE username='alice'").fetchone()[0]
+            con.execute("INSERT INTO chats(id,user_id,title,filename,metadata,messages,stats,status,progress,stage,report,created) "
+                        "VALUES(?,?,?,?,?,?,?,'ready',100,'Report ready',?,0)",
+                        (cid, uid, 'Pizza night', 'chat.txt',
+                         json.dumps({'language': 'Hebrew', 'identity': 'Alex', 'note': 'secret backstory'}),
+                         json.dumps([{'id': 1, 'sender': 'Alex', 'text': 'private text', 'timestamp': ''}]),
+                         json.dumps({'messages': 1, 'participants': []}),
+                         json.dumps({'markdown': '# Headline', 'coverage': {'messages': 1, 'chunks': 1, 'method': 'm'}, 'model': 'x'})))
+            con.execute('INSERT INTO followups(chat_id,question,answer) VALUES(?,?,?)', (cid, 'private question', 'a'))
+        return cid
+
+    def test_share_link_opens_without_an_account_and_can_be_turned_off(self):
+        cid = self.ready_chat()
+        wrong = {'Authorization': 'Bearer ' + self.bob}
+        self.assertEqual(self.client.post(f'/api/chats/{cid}/share').status_code, 401)
+        self.assertEqual(self.client.post(f'/api/chats/{cid}/share', headers=wrong).status_code, 404)
+        token = self.client.post(f'/api/chats/{cid}/share', headers=self.headers).json()['token']
+        # Sharing again returns the same link.
+        self.assertEqual(self.client.post(f'/api/chats/{cid}/share', headers=self.headers).json()['token'], token)
+        self.assertGreaterEqual(len(token), 30)
+        shared = self.client.get('/api/shared/' + token)
+        self.assertEqual(shared.status_code, 200)
+        body = shared.json()
+        self.assertEqual(body['report']['markdown'], '# Headline')
+        self.assertEqual(body['metadata'], {'language': 'Hebrew'})
+        text = shared.text
+        for private in ('secret backstory', 'private text', 'private question', 'Alex', cid):
+            self.assertNotIn(private, text)
+        self.assertEqual(self.client.get('/api/chats/' + cid, headers=self.headers).json()['share_token'], token)
+        self.assertEqual(self.client.delete(f'/api/chats/{cid}/share', headers=self.headers).status_code, 200)
+        self.assertEqual(self.client.get('/api/shared/' + token).status_code, 404)
+        self.assertEqual(self.client.get('/api/shared/' + 'x' * 32).status_code, 404)
+        self.client.delete('/api/chats/' + cid, headers=self.headers)
+
+    def test_unfinished_reports_cannot_be_shared(self):
+        cid = self.ready_chat()
+        with self.module.db() as con:
+            con.execute("UPDATE chats SET status='failed' WHERE id=?", (cid,))
+        self.assertEqual(self.client.post(f'/api/chats/{cid}/share', headers=self.headers).status_code, 409)
+        self.client.delete('/api/chats/' + cid, headers=self.headers)
+
     def test_bad_upload_never_stored(self):
         response=self.client.post('/api/chats',headers=self.headers,files={'file':('bad.exe',b'junk')},data={'metadata':'{}'})
         self.assertEqual(response.status_code,400)
