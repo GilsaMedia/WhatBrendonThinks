@@ -7,6 +7,7 @@ An independent recreation of the public [What Brandon Thinks](https://www.whatbr
 - Responsive landing page, chat categories, platform guides, FAQ and reference-image lightbox.
 - Seven-step setup: chat type, platform, export, identity, report language, background/tone, review.
 - Text, ZIP, JSON and CSV imports for WhatsApp, Meta exports, LINE, KakaoTalk and exported iMessage conversations.
+- Exports of any size, including WhatsApp ZIPs with media: the browser reads the archive lazily, keeps only the chat text and uploads that compressed. One report holds up to 256 MB of text and 1,000,000 messages.
 - Server accounts, per-account report history, asynchronous analysis with progress and restart recovery.
 - Every parsed message processed in bounded chunks; long chats use hierarchical evidence summaries.
 - Participant statistics, narrative reports, follow-up questions using retrieved messages, copy/download and deletion.
@@ -43,11 +44,15 @@ See [deployment instructions](deploy/README.md). This section describes the inte
 
 The Pages workflow builds `dist/` and deploys it. Enable Pages with **GitHub Actions** as the source. Set the repository Actions variable `VITE_API_URL` to the HTTPS API origin, with no `/api` suffix. The Settings dialog can override it per browser. The Vite relative base and hash routes work in a repository subpath, including refreshed report links.
 
+## Long chats
+
+Every message is read. The model reads a chat in pieces of `BRANDON_CHUNK_BYTES` (default 24000 UTF-8 bytes) with an Ollama context of `OLLAMA_NUM_CTX` (default 16384 tokens), then merges the summaries. Bigger pieces mean fewer model calls; on a low-memory machine lower both together, for example 10000 and 8192. On CPU a chat of hundreds of thousands of messages can still take hours.
+
 ## Storage and privacy
 
 SQLite defaults to `./data/brandon.sqlite3` (`DATA_DIR` overrides it). It stores accounts, hashed session tokens, parsed messages, metadata, reports and follow-ups. Passwords use salted scrypt. Bearer sessions expire in seven days and are kept in browser session storage. The app never sends SSH credentials to the browser or repository.
 
-The API enforces ownership on every chat operation and exact allowed origins. Configure HTTPS and restrict filesystem access. Database files are not encrypted by the application; the server owner controls disk encryption and backups. Deletion removes records from the active database, not independent backups. ZIPs are read in memory without extracting paths. Input size, expanded archive size, message count and request rates are bounded. At most two reports per user can be pending. Run one API worker; it owns the serial inference queue.
+The API enforces ownership on every chat operation and exact allowed origins. Configure HTTPS and restrict filesystem access. Database files are not encrypted by the application; the server owner controls disk encryption and backups. Deletion removes records from the active database, not independent backups. ZIPs are read in memory without extracting paths. Uploaded text (128 MB compressed, 256 MB expanded), message count (1,000,000) and request rates are bounded; media never leaves the browser. At most two reports per user can be pending. Run one API worker; it owns the serial inference queue.
 
 ## Validation
 

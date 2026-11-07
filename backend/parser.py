@@ -8,9 +8,11 @@ from collections import Counter
 from datetime import datetime
 from pathlib import PurePosixPath
 
-MAX_BYTES = 20 * 1024 * 1024
-MAX_EXPANDED = 40 * 1024 * 1024
-MAX_MESSAGES = 100_000
+# The browser extracts only the chat text from an export of any size (media is
+# never uploaded) and sends it as a compressed ZIP, so these bound text, not media.
+MAX_BYTES = 128 * 1024 * 1024
+MAX_EXPANDED = 256 * 1024 * 1024
+MAX_MESSAGES = 1_000_000
 # iOS: [11/06/2026, 14:06:00] Alex: ...; Android: 11/06/26, 14:06 - Alex: ...
 WHATSAPP = re.compile(r'^\[?(\d{1,4}[/.-]\d{1,2}[/.-]\d{1,4}),?\s+(\d{1,2}:\d{2}(?::\d{2})?(?:\s?[APap][Mm])?)\]?\s*(?:[-–]\s*)?([^:]{1,100}):\s?(.*)$')
 KAKAO = re.compile(r'^\[([^\]]{1,100})\]\s*\[([^\]]+)\]\s*(.*)$')
@@ -30,25 +32,28 @@ def decode(data):
 
 def parse_chat(data: bytes, filename: str):
     if not data or len(data) > MAX_BYTES:
-        raise ValueError('Choose a non-empty file smaller than 20 MB.')
-    if filename.lower().endswith('.zip'):
+        raise ValueError('Choose a non-empty file. Uploads are limited to 128 MB after the app removes media.')
+    # The browser repacks every export's chat text into a ZIP but keeps the original
+    # filename for display, so recognise archives by content as well as extension.
+    if filename.lower().endswith('.zip') or data.startswith(b'PK\x03\x04'):
         try:
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
                 entries = [e for e in archive.infolist() if not e.is_dir()]
-                if len(entries) > 2000 or sum(e.file_size for e in entries) > MAX_EXPANDED:
-                    raise ValueError('This archive is too large. Export without media.')
+                # Media entries are never read, so only chat text counts toward the limits.
                 candidates = [e for e in entries if not any(p.startswith('.') or p == '__MACOSX' for p in PurePosixPath(e.filename).parts)
                               and e.filename.lower().endswith(('.txt', '.json', '.csv'))]
                 candidates.sort(key=lambda e: (not e.filename.endswith('_chat.txt'), e.filename))
                 if not candidates:
                     raise ValueError('No .txt, .json or .csv chat export was found in this ZIP.')
+                if len(candidates) > 2000 or sum(e.file_size for e in candidates) > MAX_EXPANDED:
+                    raise ValueError('This chat has more than 256 MB of text, which is more than one report can hold. Export a shorter date range.')
                 messages = []
                 for entry in candidates:
                     if entry.flag_bits & 1:
                         raise ValueError('Password-protected ZIP files are not supported.')
                     messages.extend(parse_content(decode(archive.read(entry)), entry.filename))
                     if len(messages) > MAX_MESSAGES:
-                        raise ValueError('Please upload at most 100,000 messages per report.')
+                        raise ValueError('Please upload at most 1,000,000 messages per report.')
         except (zipfile.BadZipFile, RuntimeError, NotImplementedError):
             raise ValueError('The ZIP could not be read. Try exporting without media.')
     else:
@@ -61,7 +66,7 @@ def parse_chat(data: bytes, filename: str):
     if len(messages) < 3:
         raise ValueError('At least three messages are needed. Try a full text export with sender names.')
     if len(messages) > MAX_MESSAGES:
-        raise ValueError('Please upload at most 100,000 messages per report.')
+        raise ValueError('Please upload at most 1,000,000 messages per report.')
     for i, m in enumerate(messages):
         m['id'] = i + 1
     return messages

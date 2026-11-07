@@ -122,7 +122,7 @@ const faqs = [
   ],
   [
     "Which files can I upload?",
-    "WhatsApp .txt or .zip, Instagram and Messenger JSON exports, LINE and KakaoTalk text exports, and iMessage text/CSV/JSON exports. Files must contain sender names. Screenshots, voice notes, attachments and native iMessage databases are not analysed. Maximum upload: 20 MB and 100,000 parsed messages.",
+    "WhatsApp .txt or .zip, Instagram and Messenger JSON exports, LINE and KakaoTalk text exports, and iMessage text/CSV/JSON exports. Files must contain sender names. Screenshots, voice notes, attachments and native iMessage databases are not analysed. Exports of any size work, including ZIPs with media: your browser keeps only the chat text and uploads that. One report holds up to 256 MB of text and 1,000,000 messages.",
   ],
   [
     "Will it read my whole chat?",
@@ -1024,7 +1024,8 @@ function Wizard({
     [paste, setPaste] = useState(false),
     [text, setText] = useState(""),
     [consent, setConsent] = useState(false),
-    [drag, setDrag] = useState(false);
+    [drag, setDrag] = useState(false),
+    [preparing, setPreparing] = useState(null);
   const input = useRef();
   useEffect(() => {
     setError("");
@@ -1041,25 +1042,43 @@ function Wizard({
     "Anything I should know?",
     "Ready to read between the lines?",
   ];
-  function chooseFile(f) {
+  // Exports of any size are opened here in the browser; only their chat text
+  // is compressed and uploaded, never photos, videos or voice notes.
+  async function chooseFile(f) {
     setError("");
-    if (!f) return;
-    if (f.size > 20 * 1024 * 1024) {
-      setError("Choose a file smaller than 20 MB.");
-      return;
+    if (!f || preparing !== null) return;
+    setPreparing(0);
+    try {
+      // Loaded on demand so the ZIP reader doesn't weigh down the landing page.
+      const { prepareUpload, formatSize } = await import("./prepareUpload.js");
+      const prepared = await prepareUpload(f, (p) =>
+        setPreparing(Math.min(99, Math.round(p * 100))),
+      );
+      setFile({
+        name: f.name,
+        upload: prepared.upload,
+        label:
+          prepared.originalSize > prepared.textBytes
+            ? `${formatSize(prepared.originalSize)} export · ${formatSize(prepared.textBytes)} of chat text`
+            : formatSize(prepared.textBytes),
+      });
+    } catch (e) {
+      setError(
+        e.name === "NotReadableError"
+          ? "This file isn't fully downloaded yet. Make it available offline in your cloud drive, then try again."
+          : e.message || "This file could not be read.",
+      );
+    } finally {
+      setPreparing(null);
+      if (input.current) input.current.value = "";
     }
-    if (!/\.(txt|zip|json|csv)$/i.test(f.name)) {
-      setError("Choose a .txt, .zip, .json or .csv chat export.");
-      return;
-    }
-    setFile(f);
   }
   async function submit() {
     setBusy(true);
     setError("");
     try {
       const body = new FormData();
-      body.append("file", file);
+      body.append("file", file.upload);
       body.append("metadata", JSON.stringify(draft));
       const result = await api("/chats", { method: "POST", body });
       setFile(null);
@@ -1076,7 +1095,7 @@ function Wizard({
       : step === 2
         ? !!draft.platform
         : step === 3
-          ? !!file
+          ? !!file && preparing === null
           : step === 4
             ? !!draft.identity.trim()
             : true;
@@ -1209,17 +1228,26 @@ function Wizard({
               <span className={"upload-icon " + (file ? "mint" : "blue")}>
                 {file ? <FileText size={28} /> : <Upload size={28} />}
               </span>
-              <strong>{file ? file.name : "Click to upload"}</strong>
-              <span>
-                {file
-                  ? `${(file.size / 1024).toFixed(1)} KB · Click to change`
-                  : "or drop your chat export here"}
+              <strong>
+                {preparing !== null
+                  ? "Reading your export…"
+                  : file
+                    ? file.name
+                    : "Click to upload"}
+              </strong>
+              <span aria-live="polite">
+                {preparing !== null
+                  ? `${preparing}% · only the chat text is kept`
+                  : file
+                    ? `${file.label} · Click to change`
+                    : "or drop your chat export here"}
               </span>
-              <small>TXT, ZIP, JSON or CSV · Up to 20 MB</small>
+              <small>TXT, ZIP, JSON or CSV · Any size, media is skipped</small>
             </button>
             <p className="secure-note">
               <ShieldCheck size={16} /> Your file stays in this browser until
-              you generate the report.
+              you generate the report. Photos, videos and voice notes are never
+              uploaded.
             </p>
             <div className="upload-tools">
               <button

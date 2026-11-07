@@ -137,6 +137,20 @@ class APITests(unittest.TestCase):
             output=asyncio.run(ai.generate([{'role':'user','content':'test'}]))
         self.assertIn('[#1]',output)
 
+    def test_browser_prepared_zip_upload(self):
+        import io, zipfile
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
+            z.writestr('_chat.txt', CHAT)
+        response = self.client.post('/api/chats', headers=self.headers, files={'file': ('WhatsApp Chat.zip', buf.getvalue(), 'application/zip')},
+                                    data={'metadata': json.dumps({'language': 'English', 'identity': 'Alex'})})
+        self.assertEqual(response.status_code, 202, response.text)
+        cid = response.json()['id']
+        chat = self.client.get('/api/chats/' + cid, headers=self.headers).json()
+        self.assertEqual((chat['filename'], chat['stats']['messages']), ('WhatsApp Chat.zip', 3))
+        self.assertNotIn('messages', self.client.get('/api/chats', headers=self.headers).json()[0])
+        self.client.delete('/api/chats/' + cid, headers=self.headers)
+
     def test_bad_upload_never_stored(self):
         response=self.client.post('/api/chats',headers=self.headers,files={'file':('bad.exe',b'junk')},data={'metadata':'{}'})
         self.assertEqual(response.status_code,400)
