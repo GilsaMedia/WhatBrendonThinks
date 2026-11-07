@@ -16,7 +16,7 @@ This is **not a verified reproduction of every private feature** of the original
 
 ## Local development
 
-Requires Node.js 22+, Python 3.10+, and a separately installed [Ollama](https://docs.ollama.com/download).
+Requires Node.js 22+, Python 3.11+, and a separately installed [Ollama](https://docs.ollama.com/download).
 
 ```sh
 npm ci

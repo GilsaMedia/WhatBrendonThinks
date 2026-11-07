@@ -12,3 +12,5 @@ data/
 research/original/
 research/*capture*.json
 .DS_Store
+
+.venv313/

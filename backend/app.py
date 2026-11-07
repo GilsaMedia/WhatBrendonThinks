@@ -8,7 +8,7 @@ import sqlite3
 import time
 import uuid
 from collections import defaultdict, deque
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 
 import httpx
@@ -28,11 +28,16 @@ LANGUAGES = {'English', 'עברית', 'العربية', 'Español', 'Français',
 limits = defaultdict(deque)
 
 
+@contextmanager
 def db():
     con = sqlite3.connect(DB, timeout=30)
     con.row_factory = sqlite3.Row
     con.execute('PRAGMA foreign_keys=ON')
-    return con
+    try:
+        with con:
+            yield con
+    finally:
+        con.close()
 
 
 def init_db():
