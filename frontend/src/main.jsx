@@ -236,13 +236,17 @@ function App() {
     setCurrentUser(null);
     setHealth(null);
     if (getServer()) {
-      api("/health")
-        .then(setHealth)
-        .catch(() => setHealth({ status: "offline" }));
+      const checkHealth = () =>
+        api("/health")
+          .then(setHealth)
+          .catch(() => setHealth({ status: "offline" }));
+      checkHealth();
+      const healthTimer = setInterval(checkHealth, 30000);
       if (getToken())
         api("/auth/me")
           .then(setCurrentUser)
           .catch(() => forgetToken());
+      return () => clearInterval(healthTimer);
     }
   }, [serverVersion]);
   useEffect(() => {
