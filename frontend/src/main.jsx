@@ -38,6 +38,7 @@ import {
   ReportHeader,
   parseReport,
   isRtl,
+  shareLink,
 } from "./story.jsx";
 import "./style.css";
 
@@ -565,6 +566,9 @@ function App() {
         <Reports
           {...{ currentUser, auth, navigate, start, notify, setModal }}
         />
+      )}
+      {route.startsWith("/s/") && (
+        <SharedReport token={route.split("/")[2]} navigate={navigate} notify={notify} />
       )}
       {route.startsWith("/report/") && (
         <Report
@@ -1761,6 +1765,99 @@ function Reports({ currentUser, auth, navigate, start, notify, setModal }) {
     </main>
   );
 }
+function ReportFootnote({ report }) {
+  return (
+    <div className="report-footnote" dir="ltr">
+      <ShieldCheck size={17} />
+      <p>
+        {report.coverage.messages.toLocaleString()} messages. {report.coverage.method}{" "}
+        Written by {report.model}. AI interpretations may be wrong; check the evidence.
+      </p>
+    </div>
+  );
+}
+
+// A report opened from its share link: read-only, no account, no follow-ups.
+function SharedReport({ token, navigate, notify }) {
+  const [chat, setChat] = useState(null),
+    [error, setError] = useState(""),
+    [phase, setPhase] = useState(null);
+  const storyKey = "brandon-shared-" + token;
+  useEffect(() => {
+    setChat(null);
+    setPhase(null);
+    setError("");
+    api("/shared/" + token)
+      .then(setChat)
+      .catch((e) => setError(e.message));
+  }, [token]);
+  useEffect(() => {
+    if (!chat || phase) return;
+    let seen = false;
+    try {
+      seen = localStorage.getItem(storyKey) === "1";
+    } catch {}
+    setPhase(chat.stats.story && !seen ? "intro" : "report");
+  }, [chat, phase]);
+  const finishStory = () => {
+    try {
+      localStorage.setItem(storyKey, "1");
+    } catch {}
+    setPhase("report");
+    window.scrollTo(0, 0);
+  };
+  if (error)
+    return (
+      <main className="content-page center">
+        <h1>This report can’t be opened.</h1>
+        <ErrorBox text={error} />
+        <Button onClick={() => navigate("/")}>
+          Analyze your own chat <ArrowRight size={18} />
+        </Button>
+      </main>
+    );
+  if (!chat || !phase)
+    return (
+      <main className="empty-state">
+        <LoaderCircle className="spin" />
+        <p>Opening the report…</p>
+      </main>
+    );
+  const story = chat.stats.story;
+  if (phase === "intro")
+    return <ReadingIntro story={story} onDone={() => setPhase("chapters")} />;
+  if (phase === "chapters")
+    return <StoryChapters story={story} onDone={finishStory} onExit={finishStory} />;
+  const parsed = parseReport(chat.report.markdown);
+  return (
+    <main className="report-page">
+      <div className="report-topbar">
+        <span />
+        <Button onClick={() => navigate("/setup/1")}>
+          <Plus size={17} /> Analyze your own chat
+        </Button>
+      </div>
+      <article className="report-article" dir={isRtl(chat.metadata.language) ? "rtl" : "ltr"}>
+        <ReportHeader
+          chat={chat}
+          parsed={parsed}
+          notify={notify}
+          Markdown={Markdown}
+          shared
+          getShareUrl={async () => shareLink(token)}
+        />
+        <Markdown text={parsed.body} />
+        <ReportFootnote report={chat.report} />
+        {story && (
+          <button className="text-button center replay" onClick={() => setPhase("chapters")}>
+            <RefreshCw size={15} /> Replay the stats
+          </button>
+        )}
+      </article>
+    </main>
+  );
+}
+
 function Report({ id, navigate, currentUser, auth, notify, setModal }) {
   const [chat, setChat] = useState(null),
     [error, setError] = useState(""),
@@ -1979,17 +2076,25 @@ function Report({ id, navigate, currentUser, auth, notify, setModal }) {
                 parsed={parsed}
                 notify={notify}
                 Markdown={Markdown}
+                getShareUrl={async () => {
+                  const { token } = await api("/chats/" + id + "/share", {
+                    method: "POST",
+                  });
+                  setChat((c) => ({ ...c, share_token: token }));
+                  return shareLink(token);
+                }}
+                onStopSharing={async () => {
+                  try {
+                    await api("/chats/" + id + "/share", { method: "DELETE" });
+                    setChat((c) => ({ ...c, share_token: null }));
+                    notify("Link turned off. Anyone who had it can no longer open this report.");
+                  } catch (e) {
+                    notify(e.message);
+                  }
+                }}
               />
               <Markdown text={parsed.body} />
-              <div className="report-footnote" dir="ltr">
-                <ShieldCheck size={17} />
-                <p>
-                  {chat.report.coverage.messages.toLocaleString()} messages
-                  processed in {chat.report.coverage.chunks} chunks by{" "}
-                  {chat.report.model}. Long chats use compressed summaries. AI
-                  interpretations may be wrong; check the evidence.
-                </p>
-              </div>
+              <ReportFootnote report={chat.report} />
               {replay}
             </article>
           ) : (
