@@ -8,6 +8,8 @@ from collections import Counter
 from datetime import datetime
 from pathlib import PurePosixPath
 
+from . import insights
+
 # The browser extracts only the chat text from an export of any size (media is
 # never uploaded) and sends it as a compressed ZIP, so these bound text, not media.
 MAX_BYTES = 128 * 1024 * 1024
@@ -134,14 +136,15 @@ def parse_content(text, filename):
 
 
 def statistics(messages):
-    counts = Counter(m['sender'] for m in messages)
-    people = []
-    for sender, count in counts.most_common():
-        own = [m for m in messages if m['sender'] == sender]
-        people.append({'name': sender, 'messages': count,
-                       'words': sum(len(m['text'].split()) for m in own),
-                       'share': round(count / len(messages) * 100, 1),
-                       'questions': sum(m['text'].count('?') for m in own)})
-    return {'messages': len(messages), 'participants': people,
-            'words': sum(len(m['text'].split()) for m in messages),
-            'first_timestamp': messages[0]['timestamp'], 'last_timestamp': messages[-1]['timestamp']}
+    """Per-person counts plus the story chapters, in one pass per concern."""
+    counts, words, questions = Counter(), Counter(), Counter()
+    for m in messages:
+        counts[m['sender']] += 1
+        words[m['sender']] += len(m['text'].split())
+        questions[m['sender']] += m['text'].count('?')
+    people = [{'name': sender, 'messages': count, 'words': words[sender],
+               'share': round(count / len(messages) * 100, 1), 'questions': questions[sender]}
+              for sender, count in counts.most_common()]
+    return {'messages': len(messages), 'participants': people, 'words': sum(words.values()),
+            'first_timestamp': messages[0]['timestamp'], 'last_timestamp': messages[-1]['timestamp'],
+            'story': insights.build(messages)}

@@ -151,6 +151,23 @@ class APITests(unittest.TestCase):
         self.assertNotIn('messages', self.client.get('/api/chats', headers=self.headers).json()[0])
         self.client.delete('/api/chats/' + cid, headers=self.headers)
 
+    def test_preview_counts_people_without_an_account_or_storage(self):
+        response = self.client.post('/api/preview', files={'file': ('chat.txt', CHAT)})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json(), {'messages': 3, 'participants': [
+            {'name': 'Alex', 'messages': 2, 'share': 66.7}, {'name': 'Jamie', 'messages': 1, 'share': 33.3}]})
+        self.assertEqual(self.client.post('/api/preview', files={'file': ('x.exe', b'junk')}).status_code, 400)
+
+    def test_upload_applies_clean_names_and_builds_the_story(self):
+        meta = {'language': 'English', 'identity': 'Al', 'tone': 'Give me the roast', 'names': {'Alex': 'Al', 'Jamie': ''}}
+        response = self.client.post('/api/chats', headers=self.headers, files={'file': ('chat.txt', CHAT)}, data={'metadata': json.dumps(meta)})
+        self.assertEqual(response.status_code, 202, response.text)
+        chat = self.client.get('/api/chats/' + response.json()['id'], headers=self.headers).json()
+        self.assertEqual([p['name'] for p in chat['stats']['participants']], ['Al', 'Jamie'])
+        self.assertEqual(chat['stats']['story']['busiest_day']['count'], 3)
+        self.assertNotIn('tone', chat['metadata'])
+        self.client.delete('/api/chats/' + response.json()['id'], headers=self.headers)
+
     def test_bad_upload_never_stored(self):
         response=self.client.post('/api/chats',headers=self.headers,files={'file':('bad.exe',b'junk')},data={'metadata':'{}'})
         self.assertEqual(response.status_code,400)
