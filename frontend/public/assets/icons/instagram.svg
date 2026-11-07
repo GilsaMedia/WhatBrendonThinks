@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <title>Instagram</title>
+  <defs>
+    <radialGradient id="ig" cx="0.28" cy="1.05" r="1.25">
+      <stop offset="0" stop-color="#fdd56b"/>
+      <stop offset="0.12" stop-color="#fdc35e"/>
+      <stop offset="0.45" stop-color="#f2465c"/>
+      <stop offset="0.7" stop-color="#d42e8b"/>
+      <stop offset="1" stop-color="#6a3ad8"/>
+    </radialGradient>
+  </defs>
+  <rect width="48" height="48" rx="12" fill="url(#ig)"/>
+  <rect x="11" y="11" width="26" height="26" rx="8" fill="none" stroke="#fff" stroke-width="3"/>
+  <circle cx="24" cy="24" r="6.5" fill="none" stroke="#fff" stroke-width="3"/>
+  <circle cx="31.6" cy="16.4" r="1.9" fill="#fff"/>
+</svg>

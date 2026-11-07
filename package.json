@@ -1,0 +1,21 @@
+{
+  "name": "what-brandon-thinks-selfhosted",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite frontend --host 127.0.0.1",
+    "build": "vite build frontend",
+    "preview": "vite preview frontend --host 127.0.0.1",
+    "test": "python3 -m unittest discover -s backend/tests -v"
+  },
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "lucide-react": "^0.468.0"
+  },
+  "devDependencies": {
+    "vite": "^6.4.1",
+    "@vitejs/plugin-react": "^4.7.0"
+  }
+}

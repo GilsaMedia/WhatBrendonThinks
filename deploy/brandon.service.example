@@ -1,0 +1,20 @@
+[Unit]
+Description=Brandon private chat analysis API
+After=network-online.target ollama.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gilsa
+WorkingDirectory=/home/gilsa/apps/WhatBrendonThinks
+EnvironmentFile=/home/gilsa/apps/WhatBrendonThinks/deploy/.env
+Environment=DATA_DIR=/home/gilsa/apps/WhatBrendonThinks/data
+ExecStart=/home/gilsa/apps/WhatBrendonThinks/.venv/bin/uvicorn backend.app:app --host 127.0.0.1 --port 8000 --workers 1
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
