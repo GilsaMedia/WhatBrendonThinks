@@ -6,6 +6,7 @@ Observed public behavior:
 
 - White landing page with blue raised buttons, Brandon avatars, overlapping app/emoji badges, animated chat bubbles, chat-category pills, supported messaging apps, reference-image lightbox, FAQ and footer navigation.
 - The live upload funnel uses seven steps. Browser-verified steps: context selection → chat platform → upload. The WhatsApp tutorial has individual/group selection and a sequence of export instructions.
+- Large exports (observed 2026-11-07 from public locale strings only): the upload error copy says a file can be "too large to open in a browser at all" and repeatedly asks for WhatsApp's "Without media" export, which indicates the original opens exports client-side and works from the chat text. This edition does the same with its own code: `frontend/src/prepareUpload.js` reads the archive lazily, keeps only `.txt`/`.json`/`.csv` entries and uploads them as a compressed ZIP. No upload code from the original was examined or copied; its upload flow is in a lazily loaded bundle that was not fetched.
 - Selected shipped scripts and public locale data disclose additional routes including chat context, chat language, chat note, account, payment status and report launch. These route candidates do not verify private report behavior.
 
 REA static analysis:

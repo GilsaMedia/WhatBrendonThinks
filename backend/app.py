@@ -90,9 +90,14 @@ def user(request: Request):
     return dict(row)
 
 
-def owned(chat_id, current):
+# The transcript can be hundreds of MB, so only load it where it is needed.
+CHAT_SUMMARY = 'id, user_id, title, filename, metadata, stats, status, progress, stage, report, error, created'
+
+
+def owned(chat_id, current, with_messages=False):
+    columns = CHAT_SUMMARY + (', messages' if with_messages else '')
     with db() as con:
-        row = con.execute('SELECT * FROM chats WHERE id=? AND user_id=?', (chat_id, current['id'])).fetchone()
+        row = con.execute(f'SELECT {columns} FROM chats WHERE id=? AND user_id=?', (chat_id, current['id'])).fetchone()
     if not row:
         raise HTTPException(404, 'Report not found.')
     return dict(row)
@@ -127,7 +132,8 @@ async def worker():
             with db() as con:
                 return not con.execute('SELECT id FROM chats WHERE id=?', (chat_id,)).fetchone()
         try:
-            report = await ai.analyze(json.loads(row['messages']), json.loads(row['metadata']), json.loads(row['stats']), progress, cancelled)
+            messages = await asyncio.to_thread(json.loads, row['messages'])
+            report = await ai.analyze(messages, json.loads(row['metadata']), json.loads(row['stats']), progress, cancelled)
             if report:
                 with db() as con:
                     con.execute("UPDATE chats SET status='ready', progress=100, stage='Report ready', report=?, error=NULL WHERE id=?", (json.dumps(report), chat_id))
@@ -233,7 +239,7 @@ async def logout(request: Request, current=Depends(user)):
 @app.get('/api/chats')
 async def chats(current=Depends(user)):
     with db() as con:
-        rows = con.execute('SELECT * FROM chats WHERE user_id=? ORDER BY created DESC', (current['id'],)).fetchall()
+        rows = con.execute(f'SELECT {CHAT_SUMMARY} FROM chats WHERE user_id=? ORDER BY created DESC', (current['id'],)).fetchall()
     return [public_chat(r) for r in rows]
 
 
@@ -257,11 +263,13 @@ async def upload(request: Request, file: UploadFile = File(...), metadata: str =
         raise HTTPException(400, str(exc) or 'Invalid upload metadata.')
     finally:
         await file.close()
-    stats, chat_id = statistics(messages), str(uuid.uuid4())
+    stats, chat_id = await asyncio.to_thread(statistics, messages), str(uuid.uuid4())
     title = safe['title'].strip() or ' & '.join(p['name'] for p in stats['participants'][:3])[:100]
+    transcript = await asyncio.to_thread(json.dumps, messages)
+    del messages
     with db() as con:
         con.execute('INSERT INTO chats(id,user_id,title,filename,metadata,messages,stats,created) VALUES(?,?,?,?,?,?,?,?)',
-                    (chat_id, current['id'], title, (file.filename or 'chat')[:200], json.dumps(safe), json.dumps(messages), json.dumps(stats), time.time()))
+                    (chat_id, current['id'], title, (file.filename or 'chat')[:200], json.dumps(safe), transcript, json.dumps(stats), time.time()))
     return {'id': chat_id}
 
 
@@ -299,7 +307,7 @@ ask_lock = asyncio.Lock()
 @app.post('/api/chats/{chat_id}/ask')
 async def ask(chat_id: str, body: Question, request: Request, current=Depends(user)):
     throttle(request, 'ask', 10, 3600)
-    row = owned(chat_id, current)
+    row = owned(chat_id, current, with_messages=True)
     if row['status'] != 'ready':
         raise HTTPException(409, 'Wait for your report to finish.')
     if ask_lock.locked():
@@ -308,7 +316,8 @@ async def ask(chat_id: str, body: Question, request: Request, current=Depends(us
         with db() as con:
             history = [dict(r) for r in con.execute('SELECT question,answer FROM followups WHERE chat_id=? ORDER BY id', (chat_id,)).fetchall()]
         try:
-            answer = await ai.answer(json.loads(row['messages']), json.loads(row['report']), body.question, history)
+            messages = await asyncio.to_thread(json.loads, row['messages'])
+            answer = await ai.answer(messages, json.loads(row['report']), body.question, history)
         except RuntimeError as exc:
             raise HTTPException(503, str(exc))
         owned(chat_id, current)

@@ -2,6 +2,8 @@ import io
 import json
 import unittest
 import zipfile
+from unittest.mock import patch
+from backend import parser
 from backend.parser import parse_chat, statistics
 
 CHAT = '[06/11/2026, 14:06:00] Alex: Are we still on?\n[06/11/2026, 14:10:00] Jamie: Yes!\nThis is a continuation\n[06/11/2026, 14:14:00] Alex: Great 😊'
@@ -52,6 +54,31 @@ class ParserTests(unittest.TestCase):
             z.writestr('../../_chat.txt', CHAT)
         with self.assertRaises(ValueError):
             parse_chat(buf.getvalue(), 'export.zip')
+
+    def test_browser_repacked_zip_keeps_original_name_and_lifts_old_limits(self):
+        # The browser uploads a ZIP of only the chat text under the export's own name.
+        lines = [f'[06/11/2026, 14:{i % 60:02}:00] {"Alex" if i % 2 else "Jamie"}: message number {i} with some padding text' for i in range(150_000)]
+        text = '\n'.join(lines).encode()
+        self.assertGreater(len(text), 10 * 1024 * 1024)
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
+            z.writestr('_chat.txt', text)
+        result = parse_chat(buf.getvalue(), 'WhatsApp Chat with Alex.txt')
+        self.assertEqual(len(result), 150_000)
+        self.assertEqual(result[-1]['text'], 'message number 149999 with some padding text')
+
+    def test_media_in_zip_does_not_count_toward_text_limit(self):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w') as z:
+            z.writestr('_chat.txt', CHAT)
+            z.writestr('VID-0001.mp4', b'\0' * 5000)
+        with patch.object(parser, 'MAX_EXPANDED', 1000):
+            self.assertEqual(len(parse_chat(buf.getvalue(), 'export.zip')), 3)
+            big = io.BytesIO()
+            with zipfile.ZipFile(big, 'w') as z:
+                z.writestr('_chat.txt', CHAT * 20)
+            with self.assertRaisesRegex(ValueError, '256 MB of text'):
+                parse_chat(big.getvalue(), 'export.zip')
 
     def test_bad_inputs(self):
         for data, filename in [(b'', 'a.txt'), (b'PKbad','a.zip'),(b'{bad','a.json'),(b'hello','a.txt'),(b'hello','a.exe')]:
