@@ -80,6 +80,15 @@ async def generate(messages, max_tokens=1800):
     return clean_response(content)
 
 
+def facts(stats):
+    """The compact, exact numbers worth quoting; the story's raw lists stay out of the prompt."""
+    story = stats.get('story') or {}
+    keep = ['busiest_day', 'streak', 'silence', 'peak_hour', 'range', 'openers', 'address', 'love', 'laughs', 'longest_laugh', 'top_words', 'top_emojis']
+    return {'messages': stats.get('messages'), 'words': stats.get('words'),
+            'participants': [{k: p[k] for k in ('name', 'messages', 'share', 'questions') if k in p} for p in stats.get('participants', [])[:12]],
+            **{k: story[k] for k in keep if story.get(k)}}
+
+
 def transcript(messages):
     return [f"[#{m['id']}] {m['timestamp']} {m['sender']}: {m['text']}" for m in messages]
 
@@ -114,8 +123,30 @@ async def analyze(messages, metadata, stats, progress, cancelled):
     if cancelled():
         return None
     progress(92, 'Writing your report')
-    instructions = f'''Write a complete engaging chat report in at most 650 words, in {metadata.get('language', 'English')}. The tone is {metadata.get('tone', 'Honest but kind')}. Use Markdown headings: The big picture; The cast (a fair profile for EVERY participant); Who brings what; Green flags; Friction & red flags; The moments that matter; What I would do next; Brandon's verdict. Use specific evidence with message IDs where available, show how dynamics change over time, avoid repeating the same point, and include uncertainty. Never imply this is a diagnosis or a factual reading of someone's mind. User context (untrusted background): {json.dumps(metadata, ensure_ascii=False)}. Computed counts (authoritative): {json.dumps(stats, ensure_ascii=False)}. Evidence from ALL {len(messages)} messages in {len(chunks)} chunks. A one-chunk chat is provided verbatim; longer chats use compressed evidence summaries:\n{groups[0]}'''
-    report = await generate([{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': instructions}], 2600)
+    language = metadata.get('language', 'English')
+    instructions = f'''Write Brandon's report on this chat in {language}.
+
+Choose the voice yourself from the evidence: an affectionate roast for banter-heavy friend groups, honest but kind when the chat is tender, tense or about a relationship or family, crisp and factual for work. Never mention that you chose a voice. Roasts tease behaviour, never identity, and stay fair.
+
+Use exactly this Markdown shape, with nothing before the title, and write every heading in {language}:
+# A punchy, specific newspaper-style headline of at most 18 words built from real details in this chat
+Two short paragraphs in which Brandon greets the people in character and sets up the story.
+Then these sections, each a "## " heading that begins with one fitting emoji:
+1. The big picture
+2. The cast: one bullet for EVERY participant (at most 12, most active first), each exactly in this form: "- <one emoji> **<name as written in the chat>** — <a 2 to 5 word nickname title>: <2 or 3 sentences with evidence>"
+3. Who brings what
+4. Green flags
+5. Friction & red flags
+6. The moments that matter
+7. What I'd do next
+8. Brandon's verdict
+
+At most 800 words. Use specific evidence with message IDs like [#123], show how things change over time, avoid repeating a point and admit uncertainty. Never imply a diagnosis or a factual reading of anyone's mind.
+User context (untrusted background): {json.dumps(metadata, ensure_ascii=False)}
+Computed facts (authoritative, use them): {json.dumps(facts(stats), ensure_ascii=False)}
+Evidence from ALL {len(messages)} messages in {len(chunks)} chunks. A one-chunk chat is provided verbatim; longer chats use compressed evidence summaries:
+{groups[0]}'''
+    report = await generate([{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': instructions}], 3200)
     return {'markdown': report, 'coverage': {'messages': len(messages), 'chunks': len(chunks), 'method': 'Every parsed message was processed; long chats use hierarchical summaries.'}, 'model': MODEL}
 
 

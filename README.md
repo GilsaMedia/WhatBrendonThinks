@@ -5,7 +5,9 @@ An independent recreation of the public [What Brandon Thinks](https://www.whatbr
 ## Included
 
 - Responsive landing page, chat categories, platform guides, FAQ and reference-image lightbox.
-- Seven-step setup: chat type, platform, export, identity, report language, background/tone, review.
+- Seven-step setup: chat type, platform, upload with an instant message count, the people in the chat (pick yourself, name the group), name clean-up, report language, backstory. Brandon picks the report's tone himself.
+- A seven-chapter stats story before the report, counted exactly on the server: a daily calendar, who talks and who starts, what you call each other, "love you"s, busiest day, streaks, silences, hours, longest messages, first and latest messages, laughs, top words and emojis.
+- A report page with a headline, Brandon's byline, a share button, a "More inside" list and a one-line cast list. Hebrew and Arabic reports read right to left.
 - Text, ZIP, JSON and CSV imports for WhatsApp, Meta exports, LINE, KakaoTalk and exported iMessage conversations.
 - Exports of any size, including WhatsApp ZIPs with media: the browser reads the archive lazily, keeps only the chat text and uploads that compressed. One report holds up to 256 MB of text and 1,000,000 messages.
 - Server accounts, per-account report history, asynchronous analysis with progress and restart recovery.
