@@ -109,8 +109,12 @@ def parse_content(text, filename):
                 result.append({'sender': sender[:100], 'text': content, 'timestamp': row.get('timestamp') or row.get('date') or ''})
         return result
     result = []
-    for line in text.replace('\r\n', '\n').split('\n'):
-        line = line.strip('\u200e\u200f\ufeff')
+    lines = [line.strip('\u200e\u200f\ufeff') for line in text.replace('\r\n', '\n').split('\n')]
+    # In a timestamped export, "Label: value" lines without a timestamp belong to
+    # the message above (poll options, event details, multi-line messages), so the
+    # bare "Name: text" fallback is only for exports that have no timestamps at all.
+    structured = any(WHATSAPP.match(l) or LINE.match(l) or KAKAO.match(l) for l in lines)
+    for line in lines:
         match = WHATSAPP.match(line)
         if match:
             date, time, sender, content = match.groups()
@@ -126,7 +130,7 @@ def parse_content(text, filename):
             sender, time, content = match.groups()
             result.append({'sender': sender, 'text': content, 'timestamp': time})
             continue
-        match = PLAIN.match(line)
+        match = None if structured else PLAIN.match(line)
         if match:
             sender, content = match.groups()
             result.append({'sender': sender.strip(), 'text': content, 'timestamp': ''})
