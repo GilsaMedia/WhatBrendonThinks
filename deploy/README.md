@@ -37,6 +37,16 @@ tailscale serve status
 
 The API origin is `https://gilsa.tail016c50.ts.net:8443`. Only tailnet members can reach it. Set the GitHub repository Actions variable `VITE_API_URL` to this origin, then run the Pages workflow. A browser's local-network access controls may ask for permission to reach your private server.
 
+### Opening the API to the internet (for share links)
+
+Share links only work for people who can reach the API. To let anyone open them, expose the existing 8443 listener with Tailscale Funnel; the address stays the same, so the frontend needs no change.
+
+1. Create every account you need, then add `BRANDON_SIGNUPS=closed` to `deploy/.env` and restart the API. With sign-ups closed, strangers cannot create accounts or run reports on your AI bill; logins, reports and share links keep working.
+2. Allow Funnel for this machine in the Tailscale admin console (Access controls: a `nodeAttrs` entry granting `funnel`), or follow the link `tailscale funnel` prints.
+3. `tailscale funnel --bg --https=8443 http://127.0.0.1:8000`, then `tailscale funnel status`. Port 443 and its existing service stay private.
+
+To undo it, run `tailscale funnel --https=8443 off` and re-add the private listener with `tailscale serve --bg --https=8443 http://127.0.0.1:8000`.
+
 ### Public HTTPS alternative
 
 To make analysis usable outside the tailnet, provide a domain pointing to the server and configure Caddy with `Caddyfile.example`. Set `VITE_API_URL` to that HTTPS origin and restart/rebuild as needed. This changes network exposure and is not enabled by the private deployment.
