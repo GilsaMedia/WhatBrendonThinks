@@ -11,12 +11,12 @@ python3 -m venv .venv
 .venv/bin/pip install -r backend/requirements.txt
 ```
 
-Install Ollama from its official distribution and download `qwen3:4b`. This model's quantized weights are about 2.5 GB; inference also needs context and runtime memory. The supplied server has about 14 GiB RAM, an Intel i7-1185G7 and no NVIDIA GPU. The 4B model reduces CPU latency compared with an 8B model. Larger models can be selected later.
+Install Ollama from its official distribution and download `qwen3:4b-instruct-2507-q4_K_M`. This model's quantized weights are about 2.5 GB; inference also needs context and runtime memory. The supplied server has about 14 GiB RAM, an Intel i7-1185G7 and no NVIDIA GPU. The 4B model reduces CPU latency compared with an 8B model. Larger models can be selected later.
 
 Create `deploy/.env` (ignored by Git):
 
 ```dotenv
-OLLAMA_MODEL=qwen3:4b
+OLLAMA_MODEL=qwen3:4b-instruct-2507-q4_K_M
 OLLAMA_URL=http://127.0.0.1:11434
 ALLOWED_ORIGINS=https://gilsamedia.github.io
 DATA_DIR=/home/gilsa/apps/WhatBrendonThinks/data
@@ -45,10 +45,10 @@ To make analysis usable outside the tailnet, provide a domain pointing to the se
 cd deploy
 cp .env.example .env
 docker compose up -d --build
-docker compose exec ollama ollama pull qwen3:4b
+docker compose exec ollama ollama pull qwen3:4b-instruct-2507-q4_K_M
 ```
 
-Set `OLLAMA_MODEL=qwen3:4b` in `.env` before starting. If using NVIDIA hardware with a configured container runtime, add `-f compose.yaml -f compose.gpu.yaml` to the commands. `chats` stores SQLite and `models` stores model weights. Do not remove volumes during ordinary updates.
+Set `OLLAMA_MODEL=qwen3:4b-instruct-2507-q4_K_M` in `.env` before starting. If using NVIDIA hardware with a configured container runtime, add `-f compose.yaml -f compose.gpu.yaml` to the commands. `chats` stores SQLite and `models` stores model weights. Do not remove volumes during ordinary updates.
 
 ## Operations
 

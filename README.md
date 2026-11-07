@@ -23,8 +23,8 @@ npm ci
 npm run dev
 python3 -m venv .venv
 .venv/bin/pip install -r backend/requirements.txt
-ollama pull qwen3:4b
-OLLAMA_MODEL=qwen3:4b .venv/bin/uvicorn backend.app:app --host 127.0.0.1 --port 8000
+ollama pull qwen3:4b-instruct-2507-q4_K_M
+OLLAMA_MODEL=qwen3:4b-instruct-2507-q4_K_M .venv/bin/uvicorn backend.app:app --host 127.0.0.1 --port 8000
 ```
 
 Open the frontend at `http://127.0.0.1:5173`, then set the server address to `http://127.0.0.1:8000` in Settings. Create a server account. A synthetic sample chat is available in the upload step. No inference responses are faked in production; unavailable AI produces a visible retryable failure.
@@ -33,7 +33,7 @@ Open the frontend at `http://127.0.0.1:5173`, then set the server address to `ht
 
 - Frontend: `https://gilsamedia.github.io/WhatBrendonThinks/`
 - Backend target: `https://gilsa.tail016c50.ts.net:8443`
-- Model target: `qwen3:4b` through Ollama, CPU inference.
+- Model target: `qwen3:4b-instruct-2507-q4_K_M` through Ollama, CPU inference.
 - The backend address is private to the owner's Tailscale network. The GitHub Pages UI is public; using chat analysis requires access to that tailnet and a server account.
 - The existing Tailscale service on port 443 is preserved. This app uses a separate HTTPS listener on 8443.
 

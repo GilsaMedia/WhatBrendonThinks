@@ -60,7 +60,8 @@ class ChunkTests(unittest.TestCase):
         original_client = httpx.AsyncClient
         async def respond(request):
             payload = json.loads(request.content)
-            self.assertTrue(payload['messages'][-1]['content'].endswith('/no_think'))
+            self.assertEqual(payload['messages'][-1]['content'], 'test')
+            self.assertNotIn('think', payload)
             return httpx.Response(200, json={'done_reason': 'length', 'message': {'content': 'Incomplete report'}})
         def fixture_client(**kwargs):
             return original_client(transport=httpx.MockTransport(respond), **kwargs)
