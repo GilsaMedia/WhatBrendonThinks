@@ -822,7 +822,11 @@ function ServerSettings({ onSaved }) {
         {result && (
           <div className="notice success">
             <CheckCircle2 size={19} />
-            {result.provider === "claude"
+            {result.provider === "claude-code"
+              ? result.ai_ready
+                ? "Connected. Brandon runs on Claude Code with your Claude subscription."
+                : "Connected, but reports will fail until Claude Code and CLAUDE_CODE_OAUTH_TOKEN are set up on the server."
+              : result.provider === "claude"
               ? result.ai_ready
                 ? `Connected. Brandon runs on ${result.model}.`
                 : "Connected, but reports will fail until ANTHROPIC_API_KEY is set on the server."
@@ -1547,8 +1551,8 @@ function Wizard({
                 <strong>
                   {getServer() || "your server (connect in Settings)"}
                 </strong>
-                {engine === "claude"
-                  ? ", which stores it and sends it to Claude (Anthropic's API) to write your report."
+                {engine === "claude" || engine === "claude-code"
+                  ? ", which stores it and sends it to Claude (Anthropic) to write your report."
                   : engine === "local"
                     ? ", which stores it and runs the analysis on its own local model."
                     : ", which stores it and runs the analysis."}
@@ -1602,7 +1606,9 @@ function Wizard({
               )}
             </Button>
             <p className="field-note center">
-              {engine === "claude"
+              {engine === "claude-code"
+                ? "No payment here. Brandon uses the server owner's Claude subscription."
+                : engine === "claude"
                 ? "No payment here. Claude's usage is billed to your server's Anthropic account."
                 : "No payment. No AI API fees. Just your own server doing its thing."}
             </p>

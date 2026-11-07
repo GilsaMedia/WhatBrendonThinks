@@ -24,6 +24,8 @@ DATA_DIR=/home/gilsa/apps/WhatBrendonThinks/data
 
 Reports are written by a Claude agent: add `ANTHROPIC_API_KEY=...` to this file (keep it `chmod 600`). Without it, reports fail with a clear message. Ollama is only used if you set `BRANDON_PROVIDER=local`. See "Claude agent" in the main README.
 
+**Using a Claude subscription instead of an API key.** Install Claude Code on this server (`curl -fsSL https://claude.ai/install.sh | bash`), run `claude setup-token` and sign in with your Claude plan, then put the printed token in this file as `CLAUDE_CODE_OAUTH_TOKEN=...` and restart the API. Reports then run through headless Claude Code and count against your subscription's usage limits instead of an API bill. Keep this for your own use: Anthropic doesn't allow a subscription to power reports for other people's accounts.
+
 Run one Uvicorn worker. A system service example is provided; user services work too when lingering is enabled. Use restrictive permissions on `data/` and the environment file. Restart the API after code changes. Interrupted jobs return to the queue after restart; completed reports remain stored.
 
 ### Private Tailscale HTTPS

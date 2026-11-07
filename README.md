@@ -56,6 +56,10 @@ Brandon gets the exact computed statistics plus the chat. A chat up to `BRANDON_
 
 Other settings: `BRANDON_CLAUDE_MODEL` (default `claude-opus-5-5`) and `BRANDON_CLAUDE_EFFORT` (default `high`). Requests stream, cache the chat between turns, and opt into Anthropic's server-side fallback when a request is declined. A typical report costs from a few cents for a short chat to a dollar or two for a long one, mostly the first read of the chat.
 
+### With a Claude subscription (Claude Code)
+
+Instead of an API key, the server can run Claude Code headless with your Claude plan: install Claude Code on the server, run `claude setup-token`, and set `CLAUDE_CODE_OAUTH_TOKEN` in `deploy/.env`. When that token is set it takes priority (`BRANDON_PROVIDER=claude-code|claude|local` overrides). Each report runs `claude -p` in a private temporary folder holding `chat.txt` (message #N on line N) and `facts.json`, with only the Read, Grep and Glob tools, `--restricted` so they can't leave that folder, no MCP servers, no customizations and no saved session; the folder is deleted afterwards. Settings: `BRANDON_CLAUDE_CODE_MODEL` (default `sonnet`, lighter on usage limits), `BRANDON_CLAUDE_CODE_EFFORT` (default `high`), `BRANDON_CLAUDE_CODE_SAMPLE_BYTES` (default 60000, the opening sample in the prompt) and `BRANDON_CLAUDE_CODE_TIMEOUT` (default 1800 seconds). Usage counts against your subscription; keep it for your own reports.
+
 ## Long chats (local model)
 
 Every message is read. The model reads a chat in pieces of `BRANDON_CHUNK_BYTES` (default 24000 UTF-8 bytes) with an Ollama context of `OLLAMA_NUM_CTX` (default 16384 tokens), then merges the summaries. Bigger pieces mean fewer model calls; on a low-memory machine lower both together, for example 10000 and 8192. On CPU a chat of hundreds of thousands of messages can still take hours.

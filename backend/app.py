@@ -16,7 +16,7 @@ from fastapi import FastAPI, Depends, File, Form, HTTPException, Request, Upload
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from . import agent, ai, insights
+from . import agent, ai, claude_code, insights
 from .parser import parse_chat, statistics, MAX_BYTES
 
 DATA = Path(os.getenv('DATA_DIR', './data'))
@@ -133,7 +133,7 @@ async def worker():
                 return not con.execute('SELECT id FROM chats WHERE id=?', (chat_id,)).fetchone()
         try:
             messages = await asyncio.to_thread(json.loads, row['messages'])
-            brain = agent if agent.provider() == 'claude' else ai
+            brain = engine()
             report = await brain.analyze(messages, json.loads(row['metadata']), json.loads(row['stats']), progress, cancelled)
             if report:
                 with db() as con:
@@ -143,10 +143,14 @@ async def worker():
         except Exception as exc:
             # RuntimeErrors carry a message written for the user; anything else stays generic.
             reason = str(exc) if isinstance(exc, RuntimeError) else (
-                'Claude could not finish this report. Retry it.' if agent.provider() == 'claude' else
+                'Claude could not finish this report. Retry it.' if agent.provider() != 'local' else
                 'The local AI could not finish this report. Check Ollama and the configured model, then retry.')
             with db() as con:
                 con.execute("UPDATE chats SET status='failed', stage='Could not finish', error=? WHERE id=?", (reason, chat_id))
+
+
+def engine():
+    return {'claude-code': claude_code, 'claude': agent}.get(agent.provider(), ai)
 
 
 @asynccontextmanager
@@ -182,6 +186,8 @@ async def safeguards(request, call_next):
 
 @app.get('/api/health')
 async def health():
+    if agent.provider() == 'claude-code':
+        return {'status': 'ok', 'ai_ready': claude_code.ready(), 'model': f'Claude Code ({claude_code.MODEL})', 'provider': 'claude-code'}
     if agent.provider() == 'claude':
         # The key is checked when a report runs; no request is spent on health checks.
         return {'status': 'ok', 'ai_ready': agent.has_key(), 'model': agent.MODEL, 'provider': 'claude'}
@@ -347,7 +353,7 @@ async def ask(chat_id: str, body: Question, request: Request, current=Depends(us
             history = [dict(r) for r in con.execute('SELECT question,answer FROM followups WHERE chat_id=? ORDER BY id', (chat_id,)).fetchall()]
         try:
             messages = await asyncio.to_thread(json.loads, row['messages'])
-            brain = agent if agent.provider() == 'claude' else ai
+            brain = engine()
             answer = await brain.answer(messages, json.loads(row['report']), body.question, history)
         except RuntimeError as exc:
             raise HTTPException(503, str(exc))
