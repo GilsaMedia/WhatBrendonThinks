@@ -507,7 +507,7 @@ export function parseReport(markdown = "") {
   const cast = [];
   for (const line of lines) {
     const m = line.match(/^[-*]\s+(.{0,8}?)\s*\*\*(.+?)\*\*\s*[—–-]\s*([^:：]+)/);
-    if (m) cast.push({ emoji: m[1].trim(), name: m[2].trim(), title: m[3].trim() });
+    if (m) cast.push({ emoji: m[1].trim(), name: m[2].trim(), title: m[3].replace(/\*/g, "").trim() });
   }
   return { title, intro, body, sections, cast };
 }

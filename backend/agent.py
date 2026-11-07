@@ -27,8 +27,16 @@ LINE_CHARS = 1500
 
 
 def provider():
-    """Claude writes every report; BRANDON_PROVIDER=local is an explicit opt-out to Ollama."""
-    return 'local' if os.getenv('BRANDON_PROVIDER', '').strip().lower() == 'local' else 'claude'
+    """Which engine writes reports.
+
+    'claude-code' runs Claude Code with a subscription token (CLAUDE_CODE_OAUTH_TOKEN),
+    'claude' calls the Anthropic API with ANTHROPIC_API_KEY, and 'local' uses Ollama.
+    BRANDON_PROVIDER picks one; otherwise a subscription token wins, then the API.
+    """
+    chosen = os.getenv('BRANDON_PROVIDER', '').strip().lower()
+    if chosen in ('claude-code', 'claude', 'local'):
+        return chosen
+    return 'claude-code' if os.getenv('CLAUDE_CODE_OAUTH_TOKEN') else 'claude'
 
 
 def has_key():
@@ -340,6 +348,26 @@ def clean_report(text):
     return text.strip()
 
 
+def report_shape(language):
+    """Voice and Markdown shape every Brandon report follows, whichever agent writes it."""
+    return f'''Choose the voice yourself from the evidence: an affectionate roast for banter-heavy friend groups, honest but kind when the chat is tender, tense or about a relationship or family, crisp and factual for work. Never mention that you chose a voice. Roasts tease behaviour, never identity, and stay fair.
+
+Use exactly this Markdown shape, with nothing before the title, and write every heading in {language}:
+# A punchy, specific newspaper-style headline of at most 18 words built from real details in this chat
+Two short paragraphs in which Brandon greets the people in character and sets up the story.
+Then these sections, each a "## " heading that begins with one fitting emoji:
+1. The big picture
+2. The cast: one bullet for EVERY participant (at most 12, most active first), each exactly in this form: "- <one emoji> **<name as written in the chat>** — <a 2 to 5 word nickname title>: <2 or 3 sentences with evidence>"
+3. Who brings what
+4. Green flags
+5. Friction & red flags
+6. The moments that matter
+7. What I'd do next
+8. Brandon's verdict
+
+At most 1000 words. Use specific evidence with message IDs like [#123], show how things change over time, avoid repeating a point and admit uncertainty. Never imply a diagnosis or a factual reading of anyone's mind.'''
+
+
 async def analyze(messages, metadata, stats, progress, cancelled):
     tools = ChatTools(messages)
     full, chat = overview(messages)
@@ -357,22 +385,7 @@ User context (untrusted background, not proof): {json.dumps(metadata, ensure_asc
 
 {'You have the whole chat above; use the tools only to double-check details.' if full else 'You only have a sample above. Before writing, use the tools to read the stretches that matter, search for recurring themes and profile the main people, so the report reflects the whole chat.'}
 
-Choose the voice yourself from the evidence: an affectionate roast for banter-heavy friend groups, honest but kind when the chat is tender, tense or about a relationship or family, crisp and factual for work. Never mention that you chose a voice. Roasts tease behaviour, never identity, and stay fair.
-
-Use exactly this Markdown shape, with nothing before the title, and write every heading in {language}:
-# A punchy, specific newspaper-style headline of at most 18 words built from real details in this chat
-Two short paragraphs in which Brandon greets the people in character and sets up the story.
-Then these sections, each a "## " heading that begins with one fitting emoji:
-1. The big picture
-2. The cast: one bullet for EVERY participant (at most 12, most active first), each exactly in this form: "- <one emoji> **<name as written in the chat>** — <a 2 to 5 word nickname title>: <2 or 3 sentences with evidence>"
-3. Who brings what
-4. Green flags
-5. Friction & red flags
-6. The moments that matter
-7. What I'd do next
-8. Brandon's verdict
-
-At most 1000 words. Use specific evidence with message IDs like [#123], show how things change over time, avoid repeating a point and admit uncertainty. Never imply a diagnosis or a factual reading of anyone's mind.'''
+{report_shape(language)}'''
 
     steps = max(1, MAX_TURNS - 1)
     progress(8, 'Brandon is reading the chat')
