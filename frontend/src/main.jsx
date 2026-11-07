@@ -129,7 +129,7 @@ const faqs = [
   ],
   [
     "Does my chat leave my server?",
-    "The frontend sends your chat text to the server address you configure, which stores it in SQLite. When the server has an Anthropic API key, it sends the text to Claude (Anthropic's API) to write the report. Otherwise it uses a local Ollama model, and analysis stays on that machine. The last setup step tells you which one your server uses. GitHub Pages only hosts the interface.",
+    "The frontend sends your chat text to the server address you configure, which stores it in SQLite. It sends the text to Claude (Anthropic's API) to write the report, unless the administrator has switched the server to a local Ollama model, in which case analysis stays on that machine. The last setup step tells you which one your server uses. GitHub Pages only hosts the interface.",
   ],
   [
     "Which files can I upload?",
@@ -825,7 +825,7 @@ function ServerSettings({ onSaved }) {
             {result.provider === "claude"
               ? result.ai_ready
                 ? `Connected. Brandon runs on ${result.model}.`
-                : "Connected. Set ANTHROPIC_API_KEY on the server to use Claude."
+                : "Connected, but reports will fail until ANTHROPIC_API_KEY is set on the server."
               : result.ai_ready
                 ? "Connected. Your local AI is ready."
                 : `Connected. Download or start ${result.model} in Ollama.`}
@@ -2079,7 +2079,7 @@ function InfoPage({ route, start, setModal }) {
         ],
         [
           "How analysis works",
-          "When the server administrator sets an Anthropic API key, the backend sends chat text to Claude through Anthropic's API, which writes the report and answers follow-ups. Without a key, it uses the server's own Ollama model and the text stays on that server. The last setup step shows which applies.",
+          "The backend sends chat text to Claude through Anthropic's API, which writes the report and answers follow-ups. An administrator can instead switch the server to its own Ollama model, and then the text stays on that server. The last setup step shows which applies.",
         ],
         [
           "Your account",
@@ -2141,7 +2141,7 @@ function InfoPage({ route, start, setModal }) {
         ],
         [
           "AI isn’t ready?",
-          "For Claude, set ANTHROPIC_API_KEY on the server and restart the API. For a local model, start Ollama and download the model named in OLLAMA_MODEL. The Settings connection test shows which AI the server uses and whether it is ready. Retry failed reports after fixing it.",
+          "Set ANTHROPIC_API_KEY on the server and restart the API. If the server is switched to a local model, start Ollama and download the model named in OLLAMA_MODEL. The Settings connection test shows which AI the server uses and whether it is ready. Retry failed reports after fixing it.",
         ],
         [
           "Upload won’t parse?",

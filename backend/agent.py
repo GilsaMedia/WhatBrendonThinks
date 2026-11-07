@@ -27,11 +27,15 @@ LINE_CHARS = 1500
 
 
 def provider():
-    """'claude' when an Anthropic key is configured, unless BRANDON_PROVIDER says otherwise."""
-    chosen = os.getenv('BRANDON_PROVIDER', '').strip().lower()
-    if chosen in ('claude', 'local'):
-        return chosen
-    return 'claude' if os.getenv('ANTHROPIC_API_KEY') else 'local'
+    """Claude writes every report; BRANDON_PROVIDER=local is an explicit opt-out to Ollama."""
+    return 'local' if os.getenv('BRANDON_PROVIDER', '').strip().lower() == 'local' else 'claude'
+
+
+def has_key():
+    return bool(os.getenv('ANTHROPIC_API_KEY') or os.getenv('ANTHROPIC_AUTH_TOKEN'))
+
+
+NO_KEY = 'The server has no Anthropic API key. Add ANTHROPIC_API_KEY to deploy/.env and restart the API, then retry.'
 
 
 SYSTEM = ai.SYSTEM + '''
@@ -253,6 +257,9 @@ def describe(name, args):
 
 
 def client():
+    # Fail with a readable message instead of falling back to another model.
+    if not has_key():
+        raise RuntimeError(NO_KEY)
     return anthropic.AsyncAnthropic(max_retries=4)
 
 
