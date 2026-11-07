@@ -50,6 +50,25 @@ class ChunkTests(unittest.TestCase):
             self.assertIn(f'[#{i}]', evidence_calls)
 
 
+    def test_only_final_model_content_is_used(self):
+        self.assertEqual(ai.clean_response('draft notes</think>Final answer.'), 'Final answer.')
+        self.assertEqual(ai.clean_response('<think>draft</think>Final answer.'), 'Final answer.')
+        with self.assertRaises(RuntimeError):
+            ai.clean_response('<think>unfinished notes')
+
+    def test_truncated_model_output_is_rejected(self):
+        original_client = httpx.AsyncClient
+        async def respond(request):
+            payload = json.loads(request.content)
+            self.assertTrue(payload['messages'][-1]['content'].endswith('/no_think'))
+            return httpx.Response(200, json={'done_reason': 'length', 'message': {'content': 'Incomplete report'}})
+        def fixture_client(**kwargs):
+            return original_client(transport=httpx.MockTransport(respond), **kwargs)
+        with patch.object(ai.httpx, 'AsyncClient', fixture_client):
+            with self.assertRaises(RuntimeError):
+                asyncio.run(ai.generate([{'role': 'user', 'content': 'test'}]))
+
+
 class APITests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

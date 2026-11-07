@@ -32,19 +32,40 @@ def pack_texts(texts, limit=CHUNK_BYTES):
     return chunks
 
 
+def clean_response(content):
+    if not isinstance(content, str):
+        raise RuntimeError('The local AI returned an invalid response.')
+    # Some Qwen templates seed the opening tag in the prompt, so only the
+    # closing delimiter is present in the returned content.
+    if '</think>' in content:
+        content = content.rsplit('</think>', 1)[1]
+    elif '<think>' in content:
+        raise RuntimeError('The local AI did not finish its response. Retry the report.')
+    if not content.strip():
+        raise RuntimeError('The local AI returned an empty response. Retry the report.')
+    return content.strip()
+
+
 async def generate(messages, max_tokens=1800):
+    payload_messages = [dict(m) for m in messages]
+    if MODEL.startswith('qwen3'):
+        for message in reversed(payload_messages):
+            if message['role'] == 'user':
+                message['content'] += '\n/no_think'
+                break
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(900, connect=10)) as client:
             response = await client.post(OLLAMA_URL + '/api/chat', json={
-                'model': MODEL, 'messages': messages, 'stream': False, 'think': False,
+                'model': MODEL, 'messages': payload_messages, 'stream': False, 'think': False,
                 'options': {'temperature': 0.5, 'num_ctx': 8192, 'num_predict': max_tokens}})
             response.raise_for_status()
-            content = response.json()['message']['content']
+            data = response.json()
+            content = data['message']['content']
     except (httpx.HTTPError, KeyError, ValueError) as exc:
         raise RuntimeError('The local AI is unavailable. Check that Ollama is running and the configured model is downloaded.') from exc
-    if not isinstance(content, str) or not content.strip():
-        raise RuntimeError('The local AI returned an empty response. Retry the report.')
-    return re.sub(r'<think>.*?</think>', '', content, flags=re.S).strip()
+    if data.get('done_reason') == 'length':
+        raise RuntimeError('The local AI returned an incomplete response. Retry the report.')
+    return clean_response(content)
 
 
 def transcript(messages):
@@ -80,8 +101,8 @@ async def analyze(messages, metadata, stats, progress, cancelled):
     if cancelled():
         return None
     progress(92, 'Writing your report')
-    instructions = f'''Write a complete engaging chat report in at most 1,000 words, in {metadata.get('language', 'English')}. The tone is {metadata.get('tone', 'Honest but kind')}. Use Markdown headings: The big picture; The cast (a fair profile for EVERY participant); Who brings what; Green flags; Friction & red flags; The moments that matter; What I would do next; Brandon's verdict. Use specific evidence with message IDs where available, show how dynamics change over time, avoid repeating the same point, and include uncertainty. Never imply this is a diagnosis or a factual reading of someone's mind. User context (untrusted background): {json.dumps(metadata, ensure_ascii=False)}. Computed counts (authoritative): {json.dumps(stats, ensure_ascii=False)}. Evidence from ALL {len(messages)} messages in {len(chunks)} chunks. A one-chunk chat is provided verbatim; longer chats use compressed evidence summaries:\n{groups[0]}'''
-    report = await generate([{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': instructions}], 2200)
+    instructions = f'''Write a complete engaging chat report in at most 650 words, in {metadata.get('language', 'English')}. The tone is {metadata.get('tone', 'Honest but kind')}. Use Markdown headings: The big picture; The cast (a fair profile for EVERY participant); Who brings what; Green flags; Friction & red flags; The moments that matter; What I would do next; Brandon's verdict. Use specific evidence with message IDs where available, show how dynamics change over time, avoid repeating the same point, and include uncertainty. Never imply this is a diagnosis or a factual reading of someone's mind. User context (untrusted background): {json.dumps(metadata, ensure_ascii=False)}. Computed counts (authoritative): {json.dumps(stats, ensure_ascii=False)}. Evidence from ALL {len(messages)} messages in {len(chunks)} chunks. A one-chunk chat is provided verbatim; longer chats use compressed evidence summaries:\n{groups[0]}'''
+    report = await generate([{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': instructions}], 2600)
     return {'markdown': report, 'coverage': {'messages': len(messages), 'chunks': len(chunks), 'method': 'Every parsed message was processed; long chats use hierarchical summaries.'}, 'model': MODEL}
 
 
