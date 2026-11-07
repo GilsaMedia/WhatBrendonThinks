@@ -117,6 +117,14 @@ class APITests(unittest.TestCase):
         response=self.client.get('/api/chats',headers={**self.headers,'Origin':'https://evil.example'})
         self.assertEqual(response.status_code,403)
 
+    def test_closed_signups_reject_new_accounts_but_keep_logins(self):
+        with patch.object(self.module, 'SIGNUPS_OPEN', False):
+            response = self.client.post('/api/auth/register', json={'username': 'stranger', 'password': 'a safe test password'})
+            self.assertEqual(response.status_code, 403)
+            self.assertIn('Sign-ups are closed', response.json()['detail'])
+            login = self.client.post('/api/auth/login', json={'username': 'alice', 'password': 'a safe test password'})
+            self.assertEqual(login.status_code, 200)
+
     def test_login_and_logout(self):
         response=self.client.post('/api/auth/login',json={'username':'ALICE','password':'a safe test password'})
         self.assertEqual(response.status_code,200)

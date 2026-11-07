@@ -22,6 +22,9 @@ from .parser import parse_chat, statistics, MAX_BYTES
 DATA = Path(os.getenv('DATA_DIR', './data'))
 DATA.mkdir(parents=True, exist_ok=True)
 DB = DATA / 'brandon.sqlite3'
+# Set BRANDON_SIGNUPS=closed once your accounts exist, before exposing the API
+# publicly, so strangers can't create accounts and run reports on your AI bill.
+SIGNUPS_OPEN = os.getenv('BRANDON_SIGNUPS', 'open').strip().lower() != 'closed'
 ORIGINS = [s.strip() for s in os.getenv('ALLOWED_ORIGINS', 'http://127.0.0.1:5173,http://localhost:5173').split(',') if s.strip()]
 SESSION_SECONDS = 7 * 24 * 3600
 LANGUAGES = {'English', 'עברית', 'العربية', 'Español', 'Français', 'Deutsch', 'Português', 'Italiano', 'Türkçe', '日本語', '한국어', '中文', 'Nederlands', 'ไทย'}
@@ -215,6 +218,8 @@ def session_for(uid, username):
 
 @app.post('/api/auth/register', status_code=201)
 async def register(body: Credentials, request: Request):
+    if not SIGNUPS_OPEN:
+        raise HTTPException(403, 'Sign-ups are closed on this server. Ask its owner for an account.')
     throttle(request, 'register', 5, 3600)
     name, salt, uid = body.username.lower(), secrets.token_hex(16), str(uuid.uuid4())
     digest = await asyncio.to_thread(password_hash, body.password, salt)
