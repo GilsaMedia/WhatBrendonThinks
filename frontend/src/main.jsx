@@ -37,6 +37,7 @@ import {
   StoryChapters,
   ThinkingLoader,
   ReportHeader,
+  ReportContents,
   parseReport,
   isRtl,
   shareLink,
@@ -1897,6 +1898,7 @@ function SharedReport({ token, navigate, notify }) {
           getShareUrl={async () => shareLink(token)}
         />
         <Markdown text={parsed.body} />
+        <ReportContents chat={chat} parsed={parsed} />
         <ReportFootnote report={chat.report} language={chat.metadata.language} />
         {story && (
           <button className="text-button center replay" onClick={() => setPhase("chapters")}>
@@ -2145,6 +2147,7 @@ function Report({ id, navigate, currentUser, auth, notify, setModal }) {
                 }}
               />
               <Markdown text={parsed.body} />
+        <ReportContents chat={chat} parsed={parsed} />
               <ReportFootnote report={chat.report} language={chat.metadata.language} />
               {replay}
             </article>

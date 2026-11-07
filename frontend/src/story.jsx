@@ -642,6 +642,23 @@ function ReportHeaderBody({ chat, parsed, notify, Markdown, getShareUrl, onStopS
         )}
       </p>
       {parsed.intro && <Markdown text={parsed.intro} />}
+    </header>
+  );
+}
+
+/** The recap at the end of the report: its sections and everyone's nickname. */
+export function ReportContents({ chat, parsed }) {
+  return (
+    <LanguageScope language={chat.metadata.language}>
+      <ContentsBody parsed={parsed} />
+    </LanguageScope>
+  );
+}
+
+function ContentsBody({ parsed }) {
+  const { t, rtl } = useLang();
+  return (
+    <footer className="report-contents" dir={rtl ? "rtl" : "ltr"}>
       {parsed.sections.length > 1 && (
         <nav className="inside-list" aria-label={t("more_inside")}>
           <h2>{t("more_inside")}</h2>
@@ -660,7 +677,7 @@ function ReportHeaderBody({ chat, parsed, notify, Markdown, getShareUrl, onStopS
           ))}
         </div>
       )}
-    </header>
+    </footer>
   );
 }
 

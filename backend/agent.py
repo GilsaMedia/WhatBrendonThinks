@@ -374,20 +374,28 @@ Work out, from the messages themselves:
 </before_writing>
 
 <format>
-Markdown, 2,500 to 3,500 words, in exactly this order:
+Markdown, 3,000 to 4,500 words, in exactly this order:
 
 # Headline: 12 to 22 words in the style of a newspaper front page, stitched from 2 or 3 of this chat's own in-jokes, ending with 1 or 2 emojis.
 
-Opening, 3 to 4 paragraphs: Brandon greets the group by a name that fits them, says how many messages and years he read (exact facts), delivers one big comic thesis about what this group really is, sketches the main people in one fast sentence, and invites the reader in.
+Opening, 4 paragraphs of 3 to 5 sentences: Brandon greets the group by a name that fits them, says how many messages and years he read (exact facts), delivers one big comic thesis about what this group really is, sketches the main people in one fast sentence, and invites the reader in.
 
 Then 5 to 8 sections, each starting with "## " followed by 1 or 2 emojis and a punchy title written for THIS chat. Never use generic titles such as "The big picture" or "Green flags". Include:
-1. A cast section in which every person with at least 2% of the messages gets a heading "### Name — nickname title emoji" (most active first) and 1 to 4 paragraphs that speak to them directly, include at least one verbatim quote and use one of their real numbers where it lands as a joke. People with fewer messages share one closing paragraph.
-2. Two to four theme sections about this chat's own running jokes, rituals, objects or sagas, built on quotes and exchanges.
-3. Only if the chat contains loss, illness or other real pain: one sincere section, warm and without jokes, ending with a single line that brings the fun back.
-4. A final section in which Brandon predicts how each main person will react to this report, as one "- **Name:** …" bullet each, built from their real habits and catchphrases.
+1. A cast section in which every person with at least 2% of the messages gets a heading "### Name — nickname title emoji" (most active first) and 4 to 6 paragraphs (about 300 to 450 words) that speak to them directly: their role in the group, their signature habits with examples from different times, at least two verbatim quotes, one of their real numbers where it lands as a joke, and one moment that shows another side of them. People with fewer messages share one or two closing paragraphs.
+2. Two to four theme sections about this chat's own running jokes, rituals, objects or sagas, each at least 4 paragraphs (about 300 words) that tell the saga in order: how it started, how it escalated, the best exchange, and where it stands now.
+3. Only if the chat contains loss, illness or other real pain: one sincere section of at least 3 full paragraphs, warm and without jokes, ending with a single line that brings the fun back.
+4. A final section in which Brandon predicts how each main person will react to this report, as one "- **Name:** …" bullet each of 2 to 3 sentences, built from their real habits and catchphrases.
 
-Close with a short sign-off paragraph that uses the group's own catchphrase or in-joke.
+Close with a sign-off paragraph of 3 to 4 sentences that uses the group's own catchphrase or in-joke.
 </format>
+
+<depth>
+Develop everything you raise; never list it. The best reports are stories, not bullet points.
+- Write in paragraphs of 3 to 6 sentences. Never write a run of one-sentence paragraphs.
+- Never leave a quote bare: before it, set the scene (when it happened and what was going on); after it, give Brandon's take in at least two sentences that land the joke or the insight.
+- Every claim about a person or the group gets a concrete example from the chat, and the biggest ones get two.
+- Before replying, check the length. If it is under 3,000 words, deepen the thinnest sections with more evidence from the chat; never pad with filler or repeat yourself.
+</depth>
 
 <quotes>
 Put each quote in a blockquote, one message per line:
