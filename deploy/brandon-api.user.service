@@ -1,0 +1,16 @@
+[Unit]
+Description=Brandon private chat analysis API
+After=network-online.target brandon-ollama.service
+
+[Service]
+WorkingDirectory=%h/apps/WhatBrendonThinks
+EnvironmentFile=%h/apps/WhatBrendonThinks/deploy/.env
+ExecStart=%h/apps/WhatBrendonThinks/.venv/bin/uvicorn backend.app:app --host 127.0.0.1 --port 8000 --workers 1
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+
+[Install]
+WantedBy=default.target
