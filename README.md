@@ -11,7 +11,7 @@ An independent recreation of the public [What Brandon Thinks](https://www.whatbr
 - Text, ZIP, JSON and CSV imports for WhatsApp, Meta exports, LINE, KakaoTalk and exported iMessage conversations.
 - Exports of any size, including WhatsApp ZIPs with media: the browser reads the archive lazily, keeps only the chat text and uploads that compressed. One report holds up to 256 MB of text and 1,000,000 messages.
 - Server accounts, per-account report history, asynchronous analysis with progress and restart recovery.
-- **Claude agent** (with `ANTHROPIC_API_KEY`): Brandon runs on Claude and reads the chat through tools (read a stretch, search, profile a person, read a day) before writing the report and answering follow-ups.
+- **Claude agent** (the default; needs `ANTHROPIC_API_KEY`): Brandon runs on Claude and reads the chat through tools (read a stretch, search, profile a person, read a day) before writing the report and answering follow-ups.
 - **Local model** (no key): every parsed message is processed in bounded chunks with hierarchical evidence summaries.
 - Participant statistics, narrative reports, follow-up questions using retrieved messages, copy/download and deletion.
 - No billing or paywall. With Claude, reports are billed to the server owner's Anthropic account; with Ollama, your hardware provides inference.
@@ -37,7 +37,7 @@ Open the frontend at `http://127.0.0.1:5173`, then set the server address to `ht
 
 - Frontend: `https://gilsamedia.github.io/WhatBrendonThinks/`
 - Backend target: `https://gilsa.tail016c50.ts.net:8443`
-- Model target: `qwen3:4b-instruct-2507-q4_K_M` through Ollama, CPU inference.
+- Model: Claude (`claude-opus-5-5`) through the Anthropic API, as a tool-using agent. The Ollama model `qwen3:4b-instruct-2507-q4_K_M` remains available with `BRANDON_PROVIDER=local`.
 - The backend address is private to the owner's Tailscale network. The GitHub Pages UI is public; using chat analysis requires access to that tailnet and a server account.
 - The existing Tailscale service on port 443 is preserved. This app uses a separate HTTPS listener on 8443.
 
@@ -49,7 +49,7 @@ The Pages workflow builds `dist/` and deploys it. Enable Pages with **GitHub Act
 
 ## Claude agent
 
-Set `ANTHROPIC_API_KEY` in the server environment (for example `deploy/.env`) and restart the API. Reports and follow-ups then run on Claude; `BRANDON_PROVIDER=local` forces Ollama even with a key set, and `/api/health` reports which one is active. The chat text is sent to Anthropic's API, and the last setup step tells users so.
+Claude writes every report. Set `ANTHROPIC_API_KEY` in the server environment (for example `deploy/.env`) and restart the API; without it, reports fail with a message saying the key is missing, and nothing falls back to another model. `BRANDON_PROVIDER=local` deliberately switches the server to Ollama instead, and `/api/health` reports which one is active. The chat text is sent to Anthropic's API, and the last setup step tells users so.
 
 Brandon gets the exact computed statistics plus the chat. A chat up to `BRANDON_CLAUDE_FULL_BYTES` (default 400000 UTF-8 bytes) is sent whole; a longer one starts from an evenly spread sample of about 200 KB. Either way Brandon can use four read-only tools on the stored messages: `read_messages`, `search_messages`, `person_profile` and `messages_on_date`. He explores for at most `BRANDON_CLAUDE_MAX_TURNS` turns (default 14), then writes the report in the fixed headline, cast and sections format.
 

@@ -184,7 +184,7 @@ async def safeguards(request, call_next):
 async def health():
     if agent.provider() == 'claude':
         # The key is checked when a report runs; no request is spent on health checks.
-        return {'status': 'ok', 'ai_ready': bool(os.getenv('ANTHROPIC_API_KEY')), 'model': agent.MODEL, 'provider': 'claude'}
+        return {'status': 'ok', 'ai_ready': agent.has_key(), 'model': agent.MODEL, 'provider': 'claude'}
     try:
         async with httpx.AsyncClient(timeout=5) as client:
             response = await client.get(ai.OLLAMA_URL + '/api/tags')

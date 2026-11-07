@@ -130,12 +130,16 @@ class AgentTests(unittest.TestCase):
             tools.on_date('March 2')
 
     def test_provider_choice(self):
-        with patch.dict(os.environ, {'ANTHROPIC_API_KEY': 'k', 'BRANDON_PROVIDER': ''}):
+        with patch.dict(os.environ, {'ANTHROPIC_API_KEY': '', 'BRANDON_PROVIDER': ''}):
+            # Claude is the engine even without a key: no silent switch to Ollama.
             self.assertEqual(agent.provider(), 'claude')
         with patch.dict(os.environ, {'ANTHROPIC_API_KEY': 'k', 'BRANDON_PROVIDER': 'local'}):
             self.assertEqual(agent.provider(), 'local')
-        with patch.dict(os.environ, {'ANTHROPIC_API_KEY': '', 'BRANDON_PROVIDER': ''}):
-            self.assertEqual(agent.provider(), 'local')
+
+    def test_missing_key_is_a_clear_error(self):
+        with patch.dict(os.environ, {'ANTHROPIC_API_KEY': '', 'ANTHROPIC_AUTH_TOKEN': ''}):
+            with self.assertRaisesRegex(RuntimeError, 'no Anthropic API key'):
+                asyncio.run(agent.analyze(chat(), {'language': 'English'}, {'messages': 30}, lambda *_: None, lambda: False))
 
 
 if __name__ == '__main__':

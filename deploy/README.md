@@ -22,7 +22,7 @@ ALLOWED_ORIGINS=https://gilsamedia.github.io
 DATA_DIR=/home/gilsa/apps/WhatBrendonThinks/data
 ```
 
-To have a Claude agent write the reports instead of the local model, add `ANTHROPIC_API_KEY=...` to this file (keep it `chmod 600`). Ollama is then only used if you set `BRANDON_PROVIDER=local`. See "Claude agent" in the main README.
+Reports are written by a Claude agent: add `ANTHROPIC_API_KEY=...` to this file (keep it `chmod 600`). Without it, reports fail with a clear message. Ollama is only used if you set `BRANDON_PROVIDER=local`. See "Claude agent" in the main README.
 
 Run one Uvicorn worker. A system service example is provided; user services work too when lingering is enabled. Use restrictive permissions on `data/` and the environment file. Restart the API after code changes. Interrupted jobs return to the queue after restart; completed reports remain stored.
 
