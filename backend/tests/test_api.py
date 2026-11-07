@@ -29,8 +29,25 @@ class ChunkTests(unittest.TestCase):
         with patch.object(ai, 'generate', fake_generate):
             result = asyncio.run(ai.analyze(messages, {'language':'English'}, statistics(messages), lambda *_:None, lambda:False))
         self.assertEqual(result['coverage']['messages'], 3)
+        self.assertEqual(len(calls), 1, 'Small chats should use one direct inference call.')
         for i in range(1,4):
             self.assertIn(f'[#{i}]', calls[0][1]['content'])
+
+
+    def test_long_chats_process_every_message(self):
+        messages = [{'id': i, 'sender': 'Alex' if i % 2 else 'Jamie',
+                     'timestamp': '', 'text': ('evidence ' * 30) + str(i)} for i in range(1, 101)]
+        calls = []
+        async def fake_generate(payload, max_tokens=1800):
+            calls.append(payload[1]['content'])
+            return 'Evidence summary with references.'
+        with patch.object(ai, 'generate', fake_generate):
+            result = asyncio.run(ai.analyze(messages, {'language': 'English'}, {'messages': 100}, lambda *_: None, lambda: False))
+        self.assertGreater(result['coverage']['chunks'], 1)
+        self.assertEqual(result['coverage']['messages'], 100)
+        evidence_calls = '\n'.join(calls[:-1])
+        for i in range(1, 101):
+            self.assertIn(f'[#{i}]', evidence_calls)
 
 
 class APITests(unittest.TestCase):
