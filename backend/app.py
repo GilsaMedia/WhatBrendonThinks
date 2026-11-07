@@ -7,7 +7,7 @@ import secrets
 import sqlite3
 import time
 import uuid
-from collections import defaultdict, deque
+from collections import Counter, defaultdict, deque
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 
@@ -16,7 +16,7 @@ from fastapi import FastAPI, Depends, File, Form, HTTPException, Request, Upload
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from . import ai
+from . import ai, insights
 from .parser import parse_chat, statistics, MAX_BYTES
 
 DATA = Path(os.getenv('DATA_DIR', './data'))
@@ -254,11 +254,16 @@ async def upload(request: Request, file: UploadFile = File(...), metadata: str =
         meta = json.loads(metadata)
         if not isinstance(meta, dict):
             raise ValueError()
-        safe = {key: str(meta.get(key, ''))[:2000 if key == 'note' else 100] for key in ['context', 'platform', 'identity', 'language', 'note', 'tone', 'title']}
+        # Brandon chooses the report's voice himself, so no tone is accepted here.
+        safe = {key: str(meta.get(key, ''))[:2000 if key == 'note' else 100] for key in ['context', 'platform', 'identity', 'language', 'note', 'title']}
         if safe['language'] not in LANGUAGES:
             safe['language'] = 'English'
+        names = meta.get('names') or {}
+        if not isinstance(names, dict) or len(names) > 2000:
+            raise ValueError('Invalid participant names.')
         data = await file.read(MAX_BYTES + 1)
         messages = await asyncio.to_thread(parse_chat, data, file.filename or '')
+        messages = insights.rename(messages, names)
     except (ValueError, UnicodeError) as exc:
         raise HTTPException(400, str(exc) or 'Invalid upload metadata.')
     finally:
@@ -271,6 +276,23 @@ async def upload(request: Request, file: UploadFile = File(...), metadata: str =
         con.execute('INSERT INTO chats(id,user_id,title,filename,metadata,messages,stats,created) VALUES(?,?,?,?,?,?,?,?)',
                     (chat_id, current['id'], title, (file.filename or 'chat')[:200], json.dumps(safe), transcript, json.dumps(stats), time.time()))
     return {'id': chat_id}
+
+
+@app.post('/api/preview')
+async def preview(request: Request, file: UploadFile = File(...)):
+    """Count messages and people for the setup flow. Nothing is stored, so no account is needed."""
+    throttle(request, 'preview', 30, 3600)
+    try:
+        data = await file.read(MAX_BYTES + 1)
+        messages = await asyncio.to_thread(parse_chat, data, file.filename or '')
+    except (ValueError, UnicodeError) as exc:
+        raise HTTPException(400, str(exc) or 'This file could not be read.')
+    finally:
+        await file.close()
+    counts = Counter(m['sender'] for m in messages)
+    return {'messages': len(messages),
+            'participants': [{'name': name, 'messages': n, 'share': round(n / len(messages) * 100, 1)}
+                             for name, n in counts.most_common(200)]}
 
 
 @app.get('/api/chats/{chat_id}')

@@ -26,8 +26,19 @@ import {
   CheckCircle2,
   AlertCircle,
   Send,
+  Pencil,
+  Play,
 } from "lucide-react";
 import { api, getServer, setServer, getToken, forgetToken } from "./api";
+import {
+  PERSON_COLORS,
+  ReadingIntro,
+  StoryChapters,
+  ThinkingLoader,
+  ReportHeader,
+  parseReport,
+  isRtl,
+} from "./story.jsx";
 import "./style.css";
 
 const A = `${import.meta.env.BASE_URL}assets/`;
@@ -208,7 +219,7 @@ function App() {
     identity: "",
     language: "English",
     note: "",
-    tone: "Honest but kind",
+    names: {},
     title: "",
   });
   const step = route.startsWith("/setup/") ? Number(route.split("/")[2]) : 0;
@@ -1030,17 +1041,23 @@ function Wizard({
   useEffect(() => {
     setError("");
   }, [step]);
+  // Every later step needs the counted chat; send people back to upload after a reload.
+  useEffect(() => {
+    if (step > 3 && !file?.preview) navigate("/setup/3");
+  }, [step, file]);
   const update = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
   const next = () => navigate("/setup/" + (step + 1));
+  const people = file?.preview?.participants || [];
+  const group = people.length > 2;
   const headings = [
     "",
     "What type of chat would you like Brandon to analyze?",
     "Where’s your chat from?",
     `Upload your ${draft.platform || ""} chat`,
-    "Who are you in this chat?",
-    "What language should I write in?",
+    group ? "Who’s in this chat?" : "Who’s who?",
+    "Clean up the names",
+    "Choose the language for your report",
     "Anything I should know?",
-    "Ready to read between the lines?",
   ];
   // Exports of any size are opened here in the browser; only their chat text
   // is compressed and uploaded, never photos, videos or voice notes.
@@ -1050,18 +1067,20 @@ function Wizard({
     setPreparing(0);
     try {
       // Loaded on demand so the ZIP reader doesn't weigh down the landing page.
-      const { prepareUpload, formatSize } = await import("./prepareUpload.js");
+      const { prepareUpload } = await import("./prepareUpload.js");
       const prepared = await prepareUpload(f, (p) =>
-        setPreparing(Math.min(99, Math.round(p * 100))),
+        setPreparing(Math.min(95, Math.round(p * 95))),
       );
+      const body = new FormData();
+      body.append("file", prepared.upload);
+      const preview = await api("/preview", { method: "POST", body });
       setFile({
         name: f.name,
         upload: prepared.upload,
-        label:
-          prepared.originalSize > prepared.textBytes
-            ? `${formatSize(prepared.originalSize)} export · ${formatSize(prepared.textBytes)} of chat text`
-            : formatSize(prepared.textBytes),
+        mediaFiles: prepared.mediaFiles,
+        preview,
       });
+      setDraft((d) => ({ ...d, identity: "", names: {}, title: "" }));
     } catch (e) {
       setError(
         e.name === "NotReadableError"
@@ -1077,11 +1096,23 @@ function Wizard({
     setBusy(true);
     setError("");
     try {
+      const names = Object.fromEntries(
+        Object.entries(draft.names).filter(
+          ([from, to]) => to.trim() && to.trim() !== from,
+        ),
+      );
+      const identity = draft.identity
+        ? (names[draft.identity] || draft.identity).trim()
+        : "Observer";
       const body = new FormData();
       body.append("file", file.upload);
-      body.append("metadata", JSON.stringify(draft));
+      body.append(
+        "metadata",
+        JSON.stringify({ ...draft, identity, names }),
+      );
       const result = await api("/chats", { method: "POST", body });
       setFile(null);
+      setDraft((d) => ({ ...d, note: "", names: {}, title: "", identity: "" }));
       navigate("/report/" + result.id);
     } catch (e) {
       setError(e.message);
@@ -1095,10 +1126,11 @@ function Wizard({
       : step === 2
         ? !!draft.platform
         : step === 3
-          ? !!file && preparing === null
+          ? !!file?.preview && preparing === null
           : step === 4
-            ? !!draft.identity.trim()
+            ? draft.identity !== ""
             : true;
+  const topShare = people[0]?.messages || 1;
   return (
     <div className="wizard-shell">
       <header className="wizard-header">
@@ -1131,9 +1163,9 @@ function Wizard({
                 "The app",
                 "The evidence",
                 "The people",
+                "The names",
                 "Your language",
                 "The backstory",
-                "The good part",
               ][step]
             }
           </span>
@@ -1196,9 +1228,6 @@ function Wizard({
         )}
         {step === 3 && (
           <>
-            <p className="muted step-sub">
-              The whole story, straight from the source.
-            </p>
             <input
               ref={input}
               className="sr-only"
@@ -1207,146 +1236,242 @@ function Wizard({
               aria-label="Chat export file"
               onChange={(e) => chooseFile(e.target.files[0])}
             />
-            <button
-              className={
-                "dropzone " +
-                (drag ? "dragging " : "") +
-                (file ? "has-file" : "")
-              }
-              onClick={() => input.current.click()}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDrag(true);
-              }}
-              onDragLeave={() => setDrag(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDrag(false);
-                chooseFile(e.dataTransfer.files[0]);
-              }}
-            >
-              <span className={"upload-icon " + (file ? "mint" : "blue")}>
-                {file ? <FileText size={28} /> : <Upload size={28} />}
-              </span>
-              <strong>
-                {preparing !== null
-                  ? "Reading your export…"
-                  : file
-                    ? file.name
-                    : "Click to upload"}
-              </strong>
-              <span aria-live="polite">
-                {preparing !== null
-                  ? `${preparing}% · only the chat text is kept`
-                  : file
-                    ? `${file.label} · Click to change`
-                    : "or drop your chat export here"}
-              </span>
-              <small>TXT, ZIP, JSON or CSV · Any size, media is skipped</small>
-            </button>
-            <p className="secure-note">
-              <ShieldCheck size={16} /> Your file stays in this browser until
-              you generate the report. Photos, videos and voice notes are never
-              uploaded.
-            </p>
-            <div className="upload-tools">
-              <button
-                className="text-button"
-                onClick={() => setModal("tutorial")}
-              >
-                See the tutorial <ExternalLink size={15} />
-              </button>
-              <button className="text-button" onClick={() => setPaste(!paste)}>
-                {paste ? "Hide text box" : "Paste a chat instead"}{" "}
-                <MessageCircle size={15} />
-              </button>
-            </div>
-            {paste && (
-              <div className="paste-area">
-                <label>
-                  Conversation text
-                  <textarea
-                    rows={7}
-                    placeholder={
-                      "Alex: Hey, are we still on for Saturday?\nJamie: Of course!"
-                    }
-                    value={text}
-                    onChange={(e) => setText(e.target.value)}
-                  />
-                </label>
-                <Button
-                  variant="secondary"
-                  disabled={text.trim().length < 10}
-                  onClick={() => {
-                    chooseFile(
-                      new File([text], "pasted-chat.txt", {
-                        type: "text/plain",
-                      }),
-                    );
-                    setPaste(false);
+            {file?.preview && preparing === null ? (
+              <>
+                <button
+                  className="count-card"
+                  onClick={() => input.current.click()}
+                  aria-label={`${file.preview.messages} messages found. Choose a different chat`}
+                >
+                  <span className="confetti" aria-hidden="true">
+                    {Array.from({ length: 18 }, (_, i) => (
+                      <i key={i} style={{ "--i": i }} />
+                    ))}
+                  </span>
+                  <strong>{file.preview.messages.toLocaleString()}</strong>
+                  <span>messages</span>
+                  <small>Click to change the conversation</small>
+                </button>
+                {draft.platform === "WhatsApp" && file.mediaFiles > 0 && (
+                  <p className="field-note">
+                    Was this exported without media? WhatsApp includes less
+                    history when media is attached.
+                  </p>
+                )}
+              </>
+            ) : (
+              <>
+                <p className="muted step-sub">
+                  The whole story, straight from the source.
+                </p>
+                <button
+                  className={"dropzone " + (drag ? "dragging " : "")}
+                  onClick={() => input.current.click()}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDrag(true);
+                  }}
+                  onDragLeave={() => setDrag(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDrag(false);
+                    chooseFile(e.dataTransfer.files[0]);
                   }}
                 >
-                  Use this text <Check size={16} />
-                </Button>
-              </div>
+                  <span className="upload-icon blue">
+                    {preparing !== null ? (
+                      <LoaderCircle className="spin" size={28} />
+                    ) : (
+                      <Upload size={28} />
+                    )}
+                  </span>
+                  <strong>
+                    {preparing !== null
+                      ? "Reading your export…"
+                      : "Click to upload"}
+                  </strong>
+                  <span aria-live="polite">
+                    {preparing !== null
+                      ? `${preparing}% · only the chat text is kept`
+                      : "or drop your chat export here"}
+                  </span>
+                  <small>TXT, ZIP, JSON or CSV · Any size, media is skipped</small>
+                </button>
+                <p className="secure-note">
+                  <ShieldCheck size={16} /> Photos, videos and voice notes never
+                  leave this browser.
+                </p>
+              </>
             )}
             <button
-              className="sample-button"
-              onClick={() =>
-                chooseFile(
-                  new File([sampleChat], "sample-alex-and-jamie.txt", {
-                    type: "text/plain",
-                  }),
-                )
-              }
+              className="tutorial-card"
+              onClick={() => setModal("tutorial")}
             >
-              <Sparkles size={17} />
-              <span>
-                Just curious? <strong>Try the sample chat.</strong>
-              </span>
-              <ChevronRight size={17} />
+              <span>See the tutorial</span>
+              <i>
+                <Play size={18} />
+              </i>
             </button>
+            {!file?.preview && (
+              <>
+                <div className="upload-tools">
+                  <button
+                    className="text-button"
+                    onClick={() => setPaste(!paste)}
+                  >
+                    {paste ? "Hide text box" : "Paste a chat instead"}{" "}
+                    <MessageCircle size={15} />
+                  </button>
+                </div>
+                {paste && (
+                  <div className="paste-area">
+                    <label>
+                      Conversation text
+                      <textarea
+                        rows={7}
+                        placeholder={
+                          "Alex: Hey, are we still on for Saturday?\nJamie: Of course!"
+                        }
+                        value={text}
+                        onChange={(e) => setText(e.target.value)}
+                      />
+                    </label>
+                    <Button
+                      variant="secondary"
+                      disabled={text.trim().length < 10}
+                      onClick={() => {
+                        chooseFile(
+                          new File([text], "pasted-chat.txt", {
+                            type: "text/plain",
+                          }),
+                        );
+                        setPaste(false);
+                      }}
+                    >
+                      Use this text <Check size={16} />
+                    </Button>
+                  </div>
+                )}
+                <button
+                  className="sample-button"
+                  onClick={() =>
+                    chooseFile(
+                      new File([sampleChat], "sample-alex-and-jamie.txt", {
+                        type: "text/plain",
+                      }),
+                    )
+                  }
+                >
+                  <Sparkles size={17} />
+                  <span>
+                    Just curious? <strong>Try the sample chat.</strong>
+                  </span>
+                  <ChevronRight size={17} />
+                </button>
+              </>
+            )}
           </>
         )}
         {step === 4 && (
           <>
-            <p className="muted step-sub">
-              Use the name that appears next to your messages. Brandon will keep
-              track of everyone else.
-            </p>
-            <label>
-              Your name in the chat
-              <input
-                value={draft.identity}
-                maxLength={100}
-                onChange={(e) => update("identity", e.target.value)}
-                placeholder="e.g. Alex"
-                autoComplete="off"
-                autoFocus
-              />
-            </label>
-            <label>
-              Give this chat a name <span className="optional">optional</span>
-              <input
-                value={draft.title}
-                maxLength={100}
-                onChange={(e) => update("title", e.target.value)}
-                placeholder="e.g. Saturday plans"
-              />
-            </label>
-            <div className="notice">
-              <MessageCircle size={20} />
-              Not in the conversation? Enter “Observer” and I’ll write about
-              everyone fairly.
+            {group && (
+              <label className="group-name">
+                <span className="sr-only">Group name</span>
+                <input
+                  value={draft.title}
+                  maxLength={100}
+                  onChange={(e) => update("title", e.target.value)}
+                  placeholder="Name this group…"
+                  dir="auto"
+                />
+                <Pencil size={17} />
+              </label>
+            )}
+            <p className="muted step-sub">Tap your name so Brandon knows which one is you.</p>
+            <div className="people-list">
+              {people.slice(0, 60).map((p, i) => (
+                <button
+                  key={p.name}
+                  className={
+                    "person-row " +
+                    (draft.identity === p.name ? "selected" : "")
+                  }
+                  onClick={() => update("identity", p.name)}
+                  aria-pressed={draft.identity === p.name}
+                >
+                  <span className="person-top">
+                    <i style={{ background: PERSON_COLORS[i % 6] }} />
+                    <strong dir="auto">{p.name}</strong>
+                    {draft.identity === p.name && <em>You</em>}
+                    <span>
+                      {p.messages.toLocaleString()} <MessageCircle size={14} />
+                    </span>
+                    <b>{Math.round(p.share)}%</b>
+                  </span>
+                  <span className="person-bar">
+                    <span
+                      style={{
+                        width: (p.messages / topShare) * 100 + "%",
+                        background: PERSON_COLORS[i % 6],
+                      }}
+                    />
+                  </span>
+                </button>
+              ))}
+              {people.length > 60 && (
+                <p className="field-note">
+                  And {(people.length - 60).toLocaleString()} more people.
+                </p>
+              )}
             </div>
+            <button
+              className={
+                "choice observer " +
+                (draft.identity === "Observer" ? "selected" : "")
+              }
+              onClick={() => update("identity", "Observer")}
+            >
+              <span>👀</span>
+              <strong>I’m not in this chat</strong>
+              {draft.identity === "Observer" && <Check size={18} />}
+            </button>
           </>
         )}
         {step === 5 && (
           <>
             <p className="muted step-sub">
-              The chat can be in any language. Choose the language of your
-              report.
+              Replace nicknames and emojis with simple first names, so Brandon
+              knows who’s who.
             </p>
+            <div className="rename-list">
+              {people.slice(0, 60).map((p, i) => (
+                <label key={p.name} className="rename-row">
+                  <span
+                    className="rename-initial"
+                    style={{ background: PERSON_COLORS[i % 6] }}
+                    aria-hidden="true"
+                  >
+                    {Array.from(
+                      (draft.names[p.name] ?? p.name).replace(/[^\p{L}\p{N}]/gu, ""),
+                    )[0] || "?"}
+                  </span>
+                  <span className="sr-only">New name for {p.name}</span>
+                  <input
+                    value={draft.names[p.name] ?? p.name}
+                    maxLength={60}
+                    dir="auto"
+                    onChange={(e) =>
+                      update("names", { ...draft.names, [p.name]: e.target.value })
+                    }
+                  />
+                </label>
+              ))}
+            </div>
+          </>
+        )}
+        {step === 6 && (
+          <>
+            <p className="muted step-sub">It can differ from your chat.</p>
             <div className="language-grid">
               {languages.map((l) => (
                 <button
@@ -1355,7 +1480,10 @@ function Wizard({
                     (draft.language === l ? "selected" : "")
                   }
                   key={l}
-                  onClick={() => update("language", l)}
+                  onClick={() => {
+                    update("language", l);
+                    next();
+                  }}
                 >
                   {l}
                   {draft.language === l && <Check size={17} />}
@@ -1364,11 +1492,11 @@ function Wizard({
             </div>
           </>
         )}
-        {step === 6 && (
+        {step === 7 && (
           <>
             <p className="muted step-sub">
               A little context goes a long way. Add the backstory, or let the
-              chat speak for itself.
+              chat speak for itself. Brandon picks the tone himself.
             </p>
             <label>
               The backstory <span className="optional">optional</span>
@@ -1381,54 +1509,14 @@ function Wizard({
               />
             </label>
             <span className="character-count">{draft.note.length} / 2,000</span>
-            <label>How should I tell it?</label>
-            <div className="tone-choices">
-              {["Honest but kind", "Give me the roast", "Just the facts"].map(
-                (t, i) => (
-                  <button
-                    key={t}
-                    className={"choice " + (draft.tone === t ? "selected" : "")}
-                    onClick={() => update("tone", t)}
-                  >
-                    <span>{["🫶", "🔥", "🔎"][i]}</span>
-                    <strong>{t}</strong>
-                    {draft.tone === t && <Check size={18} />}
-                  </button>
-                ),
-              )}
-            </div>
-          </>
-        )}
-        {step === 7 && (
-          <>
-            <div className="ready-face">
-              <Face size={88} />
-              <span>🔍</span>
-            </div>
-            <div className="review-card">
-              {[
-                ["The chat", draft.title || file?.name || "No file selected"],
-                ["The people", draft.context || "Not selected"],
-                ["The app", draft.platform || "Not selected"],
-                ["You", draft.identity || "Not entered"],
-                ["The language", draft.language],
-                ["The vibe", draft.tone],
-              ].map(([l, v]) => (
-                <div key={l}>
-                  <span>{l}</span>
-                  <strong>{v}</strong>
-                </div>
-              ))}
-            </div>
             <div className="notice">
               <ShieldCheck size={21} />
               <span>
-                Your export will be sent to{" "}
+                Only the chat text goes to{" "}
                 <strong>
                   {getServer() || "your server (connect in Settings)"}
                 </strong>
-                . Your server stores the chat and runs the analysis through
-                Ollama.
+                , which stores it and runs the analysis through Ollama.
               </span>
             </div>
             <label className="consent">
@@ -1445,7 +1533,7 @@ function Wizard({
           </>
         )}
         {error && <ErrorBox text={error} />}
-        {step > 2 && step < 7 && (
+        {step > 2 && step < 7 && step !== 6 && (
           <Button
             className="full continue-button"
             disabled={!valid}
@@ -1457,14 +1545,13 @@ function Wizard({
         {step === 7 && (
           <>
             <Button
-              className="full continue-button"
+              className="full continue-button create-button"
               disabled={
                 busy ||
                 !consent ||
-                !file ||
+                !file?.preview ||
                 !draft.context ||
-                !draft.platform ||
-                !draft.identity.trim()
+                !draft.platform
               }
               onClick={() => needAccount(submit)}
             >
@@ -1475,7 +1562,7 @@ function Wizard({
                 </>
               ) : (
                 <>
-                  Tell me what you think <Sparkles size={20} />
+                  <Sparkles size={20} /> Create my report
                 </>
               )}
             </Button>
@@ -1643,7 +1730,9 @@ function Report({ id, navigate, currentUser, auth, notify, setModal }) {
     [question, setQuestion] = useState(""),
     [asking, setAsking] = useState(false),
     [askError, setAskError] = useState(""),
-    [tab, setTab] = useState("report");
+    [tab, setTab] = useState("report"),
+    [phase, setPhase] = useState(null);
+  const storyKey = "brandon-story-" + id;
   const load = async () => {
     try {
       setChat(await api("/chats/" + id));
@@ -1652,8 +1741,25 @@ function Report({ id, navigate, currentUser, auth, notify, setModal }) {
       setError(e.message);
     }
   };
+  // New reports open with the counting intro and the stats story, once.
+  useEffect(() => {
+    if (!chat || phase) return;
+    let seen = false;
+    try {
+      seen = localStorage.getItem(storyKey) === "1";
+    } catch {}
+    setPhase(chat.stats.story && !seen ? "intro" : "report");
+  }, [chat, phase]);
+  const finishStory = () => {
+    try {
+      localStorage.setItem(storyKey, "1");
+    } catch {}
+    setPhase("report");
+    window.scrollTo(0, 0);
+  };
   useEffect(() => {
     setChat(null);
+    setPhase(null);
     if (currentUser) {
       load();
       const t = setInterval(load, 4000);
@@ -1727,51 +1833,41 @@ function Report({ id, navigate, currentUser, auth, notify, setModal }) {
         <p>Opening your report…</p>
       </main>
     );
+  const story = chat.stats.story;
+  if (phase === "intro")
+    return <ReadingIntro story={story} onDone={() => setPhase("chapters")} />;
+  if (phase === "chapters")
+    return (
+      <StoryChapters
+        story={story}
+        onDone={finishStory}
+        onExit={() => navigate("/reports")}
+      />
+    );
+  const parsed = chat.report ? parseReport(chat.report.markdown) : null;
+  const replay = story && (
+    <button className="text-button center replay" onClick={() => setPhase("chapters")}>
+      <RefreshCw size={15} /> Replay the stats
+    </button>
+  );
   return (
     <main className="report-page">
-      <button
-        className="text-button back-link"
-        onClick={() => navigate("/reports")}
-      >
-        <ArrowLeft size={17} /> My reports
-      </button>
-      <div className="report-heading">
-        <span className="eyebrow">BRANDON HAS THOUGHTS</span>
-        <h1>{chat.title}</h1>
-        <p className="muted">
-          {chat.stats.messages.toLocaleString()} messages.{" "}
-          {chat.stats.participants.length} people. One story worth reading.
-        </p>
+      <div className="report-topbar">
+        <button
+          className="text-button back-link"
+          onClick={() => navigate("/reports")}
+        >
+          <ArrowLeft size={17} /> My reports
+        </button>
+        <Button onClick={() => navigate("/setup/1")}>
+          <Plus size={17} /> Analyze another chat
+        </Button>
       </div>
       {chat.status === "queued" || chat.status === "analyzing" ? (
-        <div className="analysis-state">
-          <div className="thinking-avatar">
-            <Face size={100} />
-            <span className="typing-dots">
-              <i />
-              <i />
-              <i />
-            </span>
-          </div>
-          <h2>
-            {chat.status === "queued"
-              ? "You’re on the list."
-              : "Reading between the lines…"}
-          </h2>
-          <p className="muted">{chat.stage}</p>
-          <div className="progress-track">
-            <span style={{ width: Math.max(3, chat.progress) + "%" }} />
-          </div>
-          <p className="small muted">
-            {chat.progress}% · Running on your server. Long chats and CPU models
-            can take a while.
-          </p>
-          <div className="notice">
-            <ShieldCheck size={20} />
-            You can close this page. The server will keep working, and your
-            report will be in My reports.
-          </div>
-        </div>
+        <>
+          <ThinkingLoader chat={chat} />
+          {replay}
+        </>
       ) : chat.status === "failed" ? (
         <div className="analysis-state">
           <AlertCircle size={42} />
@@ -1837,85 +1933,28 @@ function Report({ id, navigate, currentUser, auth, notify, setModal }) {
             </div>
           </div>
           {tab === "report" ? (
-            <div className="report-layout">
-              <article className="report-paper">
-                <div className="report-byline">
-                  <Face size={42} />
-                  <div>
-                    <strong>A little honesty, from Brandon.</strong>
-                    <small>
-                      Written for {chat.metadata.identity} ·{" "}
-                      {chat.metadata.language}
-                    </small>
-                  </div>
-                  <Sparkles size={22} />
-                </div>
-                <Markdown text={chat.report.markdown} />
-                <div className="report-footnote">
-                  <ShieldCheck size={17} />
-                  <p>
-                    {chat.report.coverage.messages.toLocaleString()} messages
-                    processed in {chat.report.coverage.chunks} chunks. Long
-                    chats use compressed summaries. AI interpretations may be
-                    wrong; check the evidence.
-                  </p>
-                </div>
-              </article>
-              <aside className="stats-card">
-                <span className="eyebrow">THE CHAT, IN NUMBERS</span>
-                <h3>
-                  {chat.stats.messages.toLocaleString()} <small>messages</small>
-                </h3>
-                <p className="muted small">
-                  {chat.stats.words.toLocaleString()} words exchanged
+            <article
+              className="report-article"
+              dir={isRtl(chat.metadata.language) ? "rtl" : "ltr"}
+            >
+              <ReportHeader
+                chat={chat}
+                parsed={parsed}
+                notify={notify}
+                Markdown={Markdown}
+              />
+              <Markdown text={parsed.body} />
+              <div className="report-footnote" dir="ltr">
+                <ShieldCheck size={17} />
+                <p>
+                  {chat.report.coverage.messages.toLocaleString()} messages
+                  processed in {chat.report.coverage.chunks} chunks by{" "}
+                  {chat.report.model}. Long chats use compressed summaries. AI
+                  interpretations may be wrong; check the evidence.
                 </p>
-                <div className="participant-stats">
-                  {chat.stats.participants.map((p, i) => (
-                    <div key={p.name}>
-                      <div>
-                        <span
-                          className={
-                            "initial " +
-                            ["blue", "pink", "mint", "yellow", "lavender"][
-                              i % 5
-                            ]
-                          }
-                        >
-                          {p.name.slice(0, 1)}
-                        </span>
-                        <strong>{p.name}</strong>
-                        <span>{p.share}%</span>
-                      </div>
-                      <div className="share-track">
-                        <span
-                          style={{
-                            width: p.share + "%",
-                            background: [
-                              "#5099f9",
-                              "#f0a7c3",
-                              "#74c9ac",
-                              "#e7c56c",
-                            ][i % 4],
-                          }}
-                        />
-                      </div>
-                      <small>
-                        {p.messages.toLocaleString()} messages · {p.questions}{" "}
-                        questions
-                      </small>
-                    </div>
-                  ))}
-                </div>
-                <Button
-                  className="full"
-                  variant="secondary"
-                  onClick={() => setTab("ask")}
-                >
-                  <MessageCircle size={17} />
-                  Dig a little deeper
-                </Button>
-              </aside>
-            </div>
+              </div>
+              {replay}
+            </article>
           ) : (
             <section className="ask-panel">
               <div className="ask-intro">

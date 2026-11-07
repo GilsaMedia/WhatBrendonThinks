@@ -65,6 +65,7 @@ export async function prepareUpload(file, onProgress = () => {}) {
     level: 6,
   });
   let textBytes = 0;
+  let mediaFiles = 0;
   if (zip) {
     let reader;
     try {
@@ -79,6 +80,7 @@ export async function prepareUpload(file, onProgress = () => {}) {
             : "This ZIP is empty. Export the chat again and wait for the download to finish.",
         );
       }
+      mediaFiles = entries.filter((e) => !e.directory && !isChatEntry(e)).length;
       if (chats.some((e) => e.encrypted))
         throw new Error("Password-protected ZIP files are not supported.");
       textBytes = chats.reduce((sum, e) => sum + e.uncompressedSize, 0);
@@ -119,5 +121,5 @@ export async function prepareUpload(file, onProgress = () => {}) {
   if (blob.size > MAX_UPLOAD_BYTES) throw tooMuchText();
   onProgress(1);
   const upload = new File([blob], file.name, { type: "application/zip" });
-  return { upload, originalSize: file.size, textBytes };
+  return { upload, originalSize: file.size, textBytes, mediaFiles };
 }
