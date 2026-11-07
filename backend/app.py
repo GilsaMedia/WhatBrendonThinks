@@ -16,7 +16,7 @@ from fastapi import FastAPI, Depends, File, Form, HTTPException, Request, Upload
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from . import ai, insights
+from . import agent, ai, insights
 from .parser import parse_chat, statistics, MAX_BYTES
 
 DATA = Path(os.getenv('DATA_DIR', './data'))
@@ -120,7 +120,7 @@ async def worker():
         with db() as con:
             row = con.execute("SELECT * FROM chats WHERE status='queued' ORDER BY created LIMIT 1").fetchone()
             if row:
-                con.execute("UPDATE chats SET status='analyzing', stage='Starting local AI' WHERE id=?", (row['id'],))
+                con.execute("UPDATE chats SET status='analyzing', stage='Brandon is getting ready' WHERE id=?", (row['id'],))
         if not row:
             await asyncio.sleep(2)
             continue
@@ -133,15 +133,20 @@ async def worker():
                 return not con.execute('SELECT id FROM chats WHERE id=?', (chat_id,)).fetchone()
         try:
             messages = await asyncio.to_thread(json.loads, row['messages'])
-            report = await ai.analyze(messages, json.loads(row['metadata']), json.loads(row['stats']), progress, cancelled)
+            brain = agent if agent.provider() == 'claude' else ai
+            report = await brain.analyze(messages, json.loads(row['metadata']), json.loads(row['stats']), progress, cancelled)
             if report:
                 with db() as con:
                     con.execute("UPDATE chats SET status='ready', progress=100, stage='Report ready', report=?, error=NULL WHERE id=?", (json.dumps(report), chat_id))
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except Exception as exc:
+            # RuntimeErrors carry a message written for the user; anything else stays generic.
+            reason = str(exc) if isinstance(exc, RuntimeError) else (
+                'Claude could not finish this report. Retry it.' if agent.provider() == 'claude' else
+                'The local AI could not finish this report. Check Ollama and the configured model, then retry.')
             with db() as con:
-                con.execute("UPDATE chats SET status='failed', stage='Could not finish', error=? WHERE id=?", ('The local AI could not finish this report. Check Ollama and the configured model, then retry.', chat_id))
+                con.execute("UPDATE chats SET status='failed', stage='Could not finish', error=? WHERE id=?", (reason, chat_id))
 
 
 @asynccontextmanager
@@ -177,6 +182,9 @@ async def safeguards(request, call_next):
 
 @app.get('/api/health')
 async def health():
+    if agent.provider() == 'claude':
+        # The key is checked when a report runs; no request is spent on health checks.
+        return {'status': 'ok', 'ai_ready': bool(os.getenv('ANTHROPIC_API_KEY')), 'model': agent.MODEL, 'provider': 'claude'}
     try:
         async with httpx.AsyncClient(timeout=5) as client:
             response = await client.get(ai.OLLAMA_URL + '/api/tags')
@@ -185,7 +193,7 @@ async def health():
         ready = ai.MODEL in models or ai.MODEL + ':latest' in models
     except (httpx.HTTPError, ValueError, KeyError):
         ready = False
-    return {'status': 'ok', 'ai_ready': ready, 'model': ai.MODEL}
+    return {'status': 'ok', 'ai_ready': ready, 'model': ai.MODEL, 'provider': 'local'}
 
 
 class Credentials(BaseModel):
@@ -339,7 +347,8 @@ async def ask(chat_id: str, body: Question, request: Request, current=Depends(us
             history = [dict(r) for r in con.execute('SELECT question,answer FROM followups WHERE chat_id=? ORDER BY id', (chat_id,)).fetchall()]
         try:
             messages = await asyncio.to_thread(json.loads, row['messages'])
-            answer = await ai.answer(messages, json.loads(row['report']), body.question, history)
+            brain = agent if agent.provider() == 'claude' else ai
+            answer = await brain.answer(messages, json.loads(row['report']), body.question, history)
         except RuntimeError as exc:
             raise HTTPException(503, str(exc))
         owned(chat_id, current)

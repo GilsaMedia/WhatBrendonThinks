@@ -75,6 +75,8 @@ class APITests(unittest.TestCase):
     def setUpClass(cls):
         cls.temp = tempfile.TemporaryDirectory()
         os.environ['DATA_DIR'] = cls.temp.name
+        # Never reach the real Claude API from tests, even with a key in the environment.
+        os.environ['BRANDON_PROVIDER'] = 'local'
         import backend.app as module
         cls.module = importlib.reload(module)
         cls.client_context = TestClient(cls.module.app)
