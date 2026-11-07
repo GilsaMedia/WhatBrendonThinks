@@ -29,6 +29,7 @@ import {
   Pencil,
   Play,
 } from "lucide-react";
+import { translator as translate } from "./i18n.js";
 import { api, getServer, setServer, getToken, forgetToken } from "./api";
 import {
   PERSON_COLORS,
@@ -39,6 +40,7 @@ import {
   parseReport,
   isRtl,
   shareLink,
+  useReportText,
 } from "./story.jsx";
 import "./style.css";
 
@@ -175,34 +177,73 @@ function Face({ size = 44 }) {
     />
   );
 }
+const EMOJI_LEAD = /^((?:\p{Extended_Pictographic}[️‍\p{Extended_Pictographic}]*\s*)+)(.*)$/u;
+
+function inline(s) {
+  return s.split(/(\*\*[^*]+\*\*)/g).map((v, j) =>
+    v.startsWith("**") && v.endsWith("**") && v.length > 4 ? <strong key={j}>{v.slice(2, -2)}</strong> : v,
+  );
+}
+
 function Markdown({ text = "" }) {
   // Render only plain text and a deliberately small Markdown subset. No raw HTML.
-  return (
-    <div className="markdown">
-      {text.split("\n").map((line, i) => {
-        const heading = line.match(/^(#{1,4})\s+(.+)/);
-        const strong = (s) =>
-          s
-            .split(/(\*\*[^*]+\*\*)/g)
-            .map((v, j) =>
-              v.startsWith("**") ? (
-                <strong key={j}>{v.slice(2, -2)}</strong>
-              ) : (
-                v
-              ),
+  const lines = text.split("\n");
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^>\s?/.test(line)) {
+      // Consecutive "> " lines form one quote card: a message, or a short exchange.
+      const quote = [];
+      while (i < lines.length && /^>\s?/.test(lines[i])) quote.push(lines[i++].replace(/^>\s?/, ""));
+      i--;
+      out.push(
+        <blockquote className="chat-quote" key={i} dir="auto">
+          {quote.filter((q) => q.trim()).map((q, j) => {
+            const who = q.match(/^\*\*(.+?):?\*\*:?\s*(.*)$/);
+            return who ? (
+              <p key={j}>
+                <b>{who[1].replace(/:$/, "")}</b>
+                {who[2]}
+              </p>
+            ) : (
+              <p key={j}>{inline(q)}</p>
             );
-        if (heading) return <h3 key={i}>{strong(heading[2])}</h3>;
-        if (/^[-*]\s/.test(line))
-          return (
-            <p className="bullet-line" key={i}>
-              {strong(line.replace(/^[-*]\s/, ""))}
-            </p>
-          );
-        if (/^\d+\.\s/.test(line)) return <p key={i}>{strong(line)}</p>;
-        return line.trim() ? <p key={i}>{strong(line)}</p> : null;
-      })}
-    </div>
-  );
+          })}
+        </blockquote>,
+      );
+      continue;
+    }
+    const section = line.match(/^##\s+(.+)/);
+    if (section && !/^###/.test(line)) {
+      const parts = section[1].match(EMOJI_LEAD);
+      out.push(
+        <h3 className="section-head" key={i}>
+          {parts && <span className="section-icon">{parts[1].trim()}</span>}
+          {inline(parts ? parts[2] : section[1])}
+        </h3>,
+      );
+      continue;
+    }
+    const person = line.match(/^###\s+(.+)/);
+    if (person) {
+      out.push(
+        <h4 className="person-head" key={i}>
+          {inline(person[1])}
+        </h4>,
+      );
+      continue;
+    }
+    const heading = line.match(/^#{1,4}\s+(.+)/);
+    if (heading) out.push(<h3 key={i}>{inline(heading[1])}</h3>);
+    else if (/^[-*]\s/.test(line))
+      out.push(
+        <p className="bullet-line" key={i}>
+          {inline(line.replace(/^[-*]\s/, ""))}
+        </p>,
+      );
+    else if (line.trim()) out.push(<p key={i}>{inline(line)}</p>);
+  }
+  return <div className="markdown">{out}</div>;
 }
 function App() {
   const [route, setRoute] = useState(location.hash.slice(1) || "/");
@@ -1771,13 +1812,16 @@ function Reports({ currentUser, auth, navigate, start, notify, setModal }) {
     </main>
   );
 }
-function ReportFootnote({ report }) {
+function ReportFootnote({ report, language }) {
+  const t = useReportText(language);
   return (
-    <div className="report-footnote" dir="ltr">
+    <div className="report-footnote">
       <ShieldCheck size={17} />
       <p>
-        {report.coverage.messages.toLocaleString()} messages. {report.coverage.method}{" "}
-        Written by {report.model}. AI interpretations may be wrong; check the evidence.
+        {t("footnote", {
+          n: report.coverage.messages.toLocaleString(),
+          model: report.model,
+        })}
       </p>
     </div>
   );
@@ -1831,9 +1875,9 @@ function SharedReport({ token, navigate, notify }) {
     );
   const story = chat.stats.story;
   if (phase === "intro")
-    return <ReadingIntro story={story} onDone={() => setPhase("chapters")} />;
+    return <ReadingIntro story={story} language={chat.metadata.language} onDone={() => setPhase("chapters")} />;
   if (phase === "chapters")
-    return <StoryChapters story={story} onDone={finishStory} onExit={finishStory} />;
+    return <StoryChapters story={story} language={chat.metadata.language} onDone={finishStory} onExit={finishStory} />;
   const parsed = parseReport(chat.report.markdown);
   return (
     <main className="report-page">
@@ -1853,10 +1897,10 @@ function SharedReport({ token, navigate, notify }) {
           getShareUrl={async () => shareLink(token)}
         />
         <Markdown text={parsed.body} />
-        <ReportFootnote report={chat.report} />
+        <ReportFootnote report={chat.report} language={chat.metadata.language} />
         {story && (
           <button className="text-button center replay" onClick={() => setPhase("chapters")}>
-            <RefreshCw size={15} /> Replay the stats
+            <RefreshCw size={15} /> {translate(chat.metadata.language)("replay")}
           </button>
         )}
       </article>
@@ -1975,10 +2019,11 @@ function Report({ id, navigate, currentUser, auth, notify, setModal }) {
     );
   const story = chat.stats.story;
   if (phase === "intro")
-    return <ReadingIntro story={story} onDone={() => setPhase("chapters")} />;
+    return <ReadingIntro story={story} language={chat.metadata.language} onDone={() => setPhase("chapters")} />;
   if (phase === "chapters")
     return (
       <StoryChapters
+        language={chat.metadata.language}
         story={story}
         onDone={finishStory}
         onExit={() => navigate("/reports")}
@@ -1987,7 +2032,7 @@ function Report({ id, navigate, currentUser, auth, notify, setModal }) {
   const parsed = chat.report ? parseReport(chat.report.markdown) : null;
   const replay = story && (
     <button className="text-button center replay" onClick={() => setPhase("chapters")}>
-      <RefreshCw size={15} /> Replay the stats
+      <RefreshCw size={15} /> {translate(chat.metadata.language)("replay")}
     </button>
   );
   return (
@@ -2100,7 +2145,7 @@ function Report({ id, navigate, currentUser, auth, notify, setModal }) {
                 }}
               />
               <Markdown text={parsed.body} />
-              <ReportFootnote report={chat.report} />
+              <ReportFootnote report={chat.report} language={chat.metadata.language} />
               {replay}
             </article>
           ) : (

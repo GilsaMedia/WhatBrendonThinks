@@ -83,7 +83,7 @@ async def generate(messages, max_tokens=1800):
 def facts(stats):
     """The compact, exact numbers worth quoting; the story's raw lists stay out of the prompt."""
     story = stats.get('story') or {}
-    keep = ['busiest_day', 'streak', 'silence', 'peak_hour', 'range', 'openers', 'address', 'love', 'laughs', 'longest_laugh', 'top_words', 'top_emojis']
+    keep = ['busiest_day', 'streak', 'silence', 'peak_hour', 'range', 'openers', 'awards', 'laughs', 'longest_laugh', 'top_words', 'top_emojis']
     return {'messages': stats.get('messages'), 'words': stats.get('words'),
             'participants': [{k: p[k] for k in ('name', 'messages', 'share', 'questions') if k in p} for p in stats.get('participants', [])[:12]],
             **{k: story[k] for k in keep if story.get(k)}}

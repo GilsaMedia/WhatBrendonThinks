@@ -66,6 +66,30 @@ class InsightTests(unittest.TestCase):
         self.assertNotIn('calendar', story)
         self.assertEqual(story['laughs'], [{'name': 'B', 'count': 1}])
 
+    def test_awards_only_for_what_stands_out(self):
+        lines = []
+        for day in range(1, 29):
+            # Dana double-texts at night and says "yalla" all the time; Omer answers in one word.
+            for k in range(7):
+                lines.append(f'[{day:02d}/03/2025, 02:{k:02d}:00] Dana: yalla guys wake up we need to plan the trip properly this time')
+            for minute in (0, 2):
+                lines.append(f'[{day:02d}/03/2025, 09:{minute:02d}:00] Omer: ok')
+                lines.append(f'[{day:02d}/03/2025, 09:{minute + 1:02d}:00] Lior: sounds good to me honestly')
+        story = insights.build(chat(lines))
+        kinds = {a['kind']: a for a in story['awards']}
+        dana = [a['kind'] for a in story['awards'] if a['name'] == 'Dana']
+        # Dana stands out three ways but is capped at two awards, strongest first.
+        self.assertEqual(dana, ['signature', 'night_owl'])
+        self.assertIn({'kind': 'signature', 'name': 'Dana', 'word': 'yalla'},
+                      [{k: a[k] for k in ('kind', 'name', 'word') if k in a} for a in story['awards']])
+        self.assertEqual(kinds['one_worder']['name'], 'Omer')
+        # Nobody says "love you" or sorry, so there are no such awards.
+        self.assertNotIn('love', kinds)
+        self.assertNotIn('sorry', kinds)
+
+    def test_small_chats_get_no_awards(self):
+        self.assertEqual(insights.build(chat(GROUP))['awards'], [])
+
     def test_rename_merges_people(self):
         messages = insights.rename(chat(GROUP), {'אור': 'Or', 'עדי': 'Or', 'גילסא': '  '})
         self.assertEqual({m['sender'] for m in messages}, {'Or', 'גילסא'})

@@ -68,7 +68,7 @@ class ClaudeCodeTests(unittest.TestCase):
     def test_runs_restricted_read_only_session_and_returns_report(self):
         result, stages = self.analyze('ok')
         self.assertTrue(result['markdown'].startswith('# Pizza diplomacy'))
-        self.assertEqual(result['model'], 'Claude Code (sonnet)')
+        self.assertEqual(result['model'], 'Claude Code (opus)')
         record = json.loads(self.record.read_text())
         args = record['args']
         for flag in ('-p', '--restricted', '--strict-mcp-config', '--safe-mode', '--no-session-persistence'):
@@ -81,6 +81,8 @@ class ClaudeCodeTests(unittest.TestCase):
         self.assertEqual(len(lines), 30)
         self.assertTrue(lines[4].startswith('[#5]') and '⏎' in lines[4])
         self.assertIn("Write Brandon's report", record['prompt'])
+        self.assertIn('Read all of it', record['prompt'])  # 30 messages: read in full
+        self.assertIn('Never cite message numbers', record['prompt'])
         self.assertFalse(record['has_api_key'])
         self.assertEqual(record['token'], 'oauth-token')
         self.assertIn('Searching for “pizza”', stages)
