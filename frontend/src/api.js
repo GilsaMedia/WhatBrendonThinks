@@ -48,8 +48,12 @@ export async function api(path, { body, method = "GET", signal } = {}) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     if (response.status === 401 && !path.includes("/auth/login")) forgetToken();
-    const detail =
-      typeof data.detail === "string"
+    // FastAPI's bare "Not Found" means the route itself is missing: the
+    // server is running older code than this page expects.
+    const outdated = response.status === 404 && data.detail === "Not Found";
+    const detail = outdated
+      ? "Your server is running an older version of Brandon. Update it (git pull, then restart the API) and try again."
+      : typeof data.detail === "string"
         ? data.detail
         : response.status === 422
           ? "Check your input. Username: 3–40 letters, numbers, dots or underscores. Password: at least 10 characters."
