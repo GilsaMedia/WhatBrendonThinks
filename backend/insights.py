@@ -3,6 +3,7 @@
 Everything here is counted from the parsed messages; no model is involved, so
 the numbers are exact and available as soon as a chat is uploaded.
 """
+import math
 import re
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
@@ -208,7 +209,137 @@ def build(messages):
         story['silence'] = _silence(ordered)
         if conversations:
             story['openers'] = [{'name': n, 'share': round(openers[n] / conversations * 100)} for n in top_names]
+    story['awards'] = awards(messages, times, love, laughs)
     return story
+
+
+SORRY = re.compile(r"(?i)(\bsorry\b|\bsry\b|\bmy bad\b|סליחה|מצטער|מצטערת|\bperd[oó]n|lo siento|d[ée]sol[ée]|entschuldig|tut mir leid|desculp|\bscusa|mi dispiace|[öo]z[üu]r|ごめん|すみません|미안|죄송|对不起|抱歉|آسف|اسف|ขอโทษ)")
+QUESTION = re.compile(r'[?？؟]')
+
+
+def awards(messages, times, love, laughs):
+    """The stats that stand out in this chat, strongest first.
+
+    Every award has to clear a threshold, so a chat only gets the ones that are
+    true and notable for it: no "love you" card for a chat where nobody says it.
+    """
+    people = Counter(m['sender'] for m in messages)
+    regulars = {p for p, n in people.items() if n >= 30 and n >= len(messages) * 0.02}
+    if len(people) < 2 or not regulars:
+        return []
+    run, best_run, previous = 0, Counter(), None
+    night, early, words, questions, sorry = Counter(), Counter(), Counter(), Counter(), Counter()
+    replies = defaultdict(list)
+    last_seen = {}
+    gaps = Counter()
+    since = Counter()
+    vocab = defaultdict(Counter)
+    for i, (m, when) in enumerate(zip(messages, times)):
+        sender, text = m['sender'], m['text']
+        run = run + 1 if sender == previous else 1
+        best_run[sender] = max(best_run[sender], run)
+        words[sender] += len(text.split())
+        questions[sender] += bool(QUESTION.search(text))
+        sorry[sender] += len(SORRY.findall(text))
+        for w in WORD.findall(text):
+            w = w.lower()
+            if len(w) > 2 and w not in STOP and not LAUGH.match(w):
+                vocab[sender][w] += 1
+        if when:
+            night[sender] += when.hour < 5
+            early[sender] += 5 <= when.hour < 8
+            if previous and previous != sender and i and times[i - 1]:
+                minutes = (when - times[i - 1]).total_seconds() / 60
+                if 0 <= minutes <= 12 * 60:
+                    replies[sender].append(minutes)
+            # How long someone vanished while the others kept talking.
+            if sender in last_seen and since[sender] >= 30:
+                gaps[sender] = max(gaps[sender], (when - last_seen[sender]).days)
+            last_seen[sender] = when
+            since[sender] = 0
+            for other in last_seen:
+                if other != sender:
+                    since[other] += 1
+        previous = sender
+
+    found = []
+
+    def add(kind, name, value, score, **extra):
+        if name in regulars:
+            found.append({'kind': kind, 'name': name, 'value': value, 'score': round(score, 2), **extra})
+
+    def top(counter):
+        ranked = [(n, c) for n, c in counter.most_common() if n in regulars]
+        return ranked[0] if ranked else (None, 0)
+
+    def standout(counter, name, value):
+        # How much one person owns this behaviour (their share of it), plus a little for volume.
+        total = sum(counter.values()) or 1
+        return 1 + 2 * value / total + min(math.log10(max(value, 1)), 2) * 0.3
+
+    name, value = top(best_run)
+    if value >= 6:
+        add('double_texter', name, value, 1 + min(value / 6, 3))
+    name, value = top(night)
+    if value >= 10:
+        add('night_owl', name, value, standout(night, name, value))
+    name, value = top(early)
+    if value >= 10:
+        add('early_bird', name, value, standout(early, name, value))
+    medians = {p: sorted(r)[len(r) // 2] for p, r in replies.items() if p in regulars and len(r) >= 15}
+    if len(medians) >= 2:
+        fast = min(medians, key=medians.get)
+        slow = max(medians, key=medians.get)
+        if medians[fast] <= 5:
+            add('fast_replier', fast, max(1, round(medians[fast])), 2)
+        if medians[slow] >= 30 and medians[slow] >= medians[fast] * 4:
+            add('slow_replier', slow, round(medians[slow]), 1.5 + min(medians[slow] / 240, 1.5))
+    averages = {p: words[p] / people[p] for p in regulars}
+    if len(averages) >= 2:
+        long_p = max(averages, key=averages.get)
+        short_p = min(averages, key=averages.get)
+        if averages[long_p] >= 12 and averages[long_p] >= averages[short_p] * 2:
+            add('essayist', long_p, round(averages[long_p], 1), 1 + min(averages[long_p] / 12, 3))
+        if averages[short_p] <= 4:
+            add('one_worder', short_p, round(averages[short_p], 1), 1 + min(4 / max(averages[short_p], 1), 2.5))
+    name, value = top(questions)
+    if value >= 20 and value / people[name] >= 0.15:
+        add('questions', name, value, standout(questions, name, value))
+    name, value = top(sorry)
+    if value >= 5:
+        add('sorry', name, value, standout(sorry, name, value))
+    name, value = top(love)
+    if value >= 3:
+        add('love', name, value, standout(love, name, value))
+    name, value = top(laughs)
+    if value >= 15:
+        add('laughs', name, value, standout(laughs, name, value))
+    name, value = top(gaps)
+    if value >= 14:
+        add('ghost', name, value, 1 + min(value / 30, 2.5))
+    # Signature words: something one person says far more than anyone else.
+    totals = Counter()
+    for counts in vocab.values():
+        totals.update(counts)
+    signatures = []
+    for person in regulars:
+        best = None
+        for word, count in vocab[person].most_common(200):
+            if count >= 6 and count / totals[word] >= 0.7 and word not in {p.lower() for p in people}:
+                score = count * count / totals[word]
+                if not best or score > best[2]:
+                    best = (word, count, score)
+        if best:
+            signatures.append((person, best))
+    for person, (word, count, score) in sorted(signatures, key=lambda s: -s[1][2])[:2]:
+        add('signature', person, count, 2 + min(score, 60) / 30, word=word)
+    # Strongest first, at most two awards per person so everyone gets a turn.
+    chosen, per_person = [], Counter()
+    for award in sorted(found, key=lambda a: -a['score']):
+        if per_person[award['name']] < 2:
+            chosen.append(award)
+            per_person[award['name']] += 1
+    return chosen[:8]
 
 
 def _brief(m, when, limit=300):
