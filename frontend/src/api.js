@@ -13,11 +13,11 @@ export function setServer(value) {
   )
     throw new Error("Use an HTTPS server URL (HTTP is allowed on localhost).");
   localStorage.setItem("brandon-server", clean);
-  sessionStorage.removeItem("brandon-token");
+  localStorage.removeItem("brandon-token");
 }
-export const getToken = () => sessionStorage.getItem("brandon-token");
+export const getToken = () => localStorage.getItem("brandon-token");
 export function forgetToken() {
-  sessionStorage.removeItem("brandon-token");
+  localStorage.removeItem("brandon-token");
 }
 export async function api(path, { body, method = "GET", signal } = {}) {
   const server = getServer();
@@ -60,6 +60,6 @@ export async function api(path, { body, method = "GET", signal } = {}) {
           : `Server returned ${response.status}.`;
     throw new Error(detail);
   }
-  if (data.token) sessionStorage.setItem("brandon-token", data.token);
+  if (data.token) localStorage.setItem("brandon-token", data.token);
   return data;
 }
