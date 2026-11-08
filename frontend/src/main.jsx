@@ -2260,7 +2260,7 @@ function InfoPage({ route, start, setModal }) {
         ],
         [
           "Your account",
-          "Passwords are salted and hashed with scrypt. Session tokens are stored in this browser’s session storage. Your server address is stored in local storage. Your chats are available only to your account through the API, and server administrators can access the database.",
+          "Passwords are salted and hashed with scrypt. Your sign-in is remembered in this browser’s local storage for 30 days, until you sign out. Your server address is stored in local storage. Your chats are available only to your account through the API, and server administrators can access the database.",
         ],
         [
           "Deleting your data",

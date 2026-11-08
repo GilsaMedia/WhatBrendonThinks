@@ -66,7 +66,7 @@ Every message is read. The model reads a chat in pieces of `BRANDON_CHUNK_BYTES`
 
 ## Storage and privacy
 
-SQLite defaults to `./data/brandon.sqlite3` (`DATA_DIR` overrides it). It stores accounts, hashed session tokens, parsed messages, metadata, reports and follow-ups. Passwords use salted scrypt. Bearer sessions expire in seven days and are kept in browser session storage. The app never sends SSH credentials to the browser or repository.
+SQLite defaults to `./data/brandon.sqlite3` (`DATA_DIR` overrides it). It stores accounts, hashed session tokens, parsed messages, metadata, reports and follow-ups. Passwords use salted scrypt. Bearer sessions expire in 30 days and are kept in browser local storage, so a sign-in survives closing the tab. The app never sends SSH credentials to the browser or repository.
 
 The API enforces ownership on every chat operation and exact allowed origins. Configure HTTPS and restrict filesystem access. Database files are not encrypted by the application; the server owner controls disk encryption and backups. Deletion removes records from the active database, not independent backups. ZIPs are read in memory without extracting paths. Uploaded text (128 MB compressed, 256 MB expanded), message count (1,000,000) and request rates are bounded; media never leaves the browser. At most two reports per user can be pending. Run one API worker; it owns the serial inference queue.
 
