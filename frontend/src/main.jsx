@@ -2141,7 +2141,19 @@ function Report({ id, navigate, currentUser, auth, notify, setModal }) {
                 parsed={parsed}
                 notify={notify}
                 Markdown={Markdown}
-                getShareUrl={() => snapshotLink(chat)}
+                getShareUrl={async () => {
+                  // Short link served by the API; the long self-contained link is
+                  // only a fallback for when the server can't make one.
+                  try {
+                    const { token } = await api("/chats/" + id + "/share", {
+                      method: "POST",
+                    });
+                    setChat((c) => ({ ...c, share_token: token }));
+                    return shareLink(token);
+                  } catch {
+                    return snapshotLink(chat);
+                  }
+                }}
                 onStopSharing={async () => {
                   try {
                     await api("/chats/" + id + "/share", { method: "DELETE" });
