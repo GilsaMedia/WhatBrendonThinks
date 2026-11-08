@@ -580,6 +580,41 @@ export function shareLink(token) {
   return `${location.origin}${location.pathname}#/s/${token}`;
 }
 
+// A self-contained share link: the report travels compressed inside the link's
+// #fragment, so opening it needs no server and no account. Browsers never send the
+// fragment to the website, so the report is only seen by whoever holds the link.
+const toB64url = (bytes) => {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+};
+const fromB64url = (text) => {
+  const s = atob(text.replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(s, (c) => c.charCodeAt(0));
+};
+const pipe = async (bytes, stream) =>
+  new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer());
+
+export async function snapshotLink(chat) {
+  const snapshot = {
+    v: 1,
+    title: chat.title,
+    metadata: chat.metadata,
+    stats: { story: chat.stats?.story },
+    report: chat.report,
+    created: chat.created,
+  };
+  const packed = await pipe(new TextEncoder().encode(JSON.stringify(snapshot)), new CompressionStream("deflate-raw"));
+  return `${location.origin}${location.pathname}#/v/${toB64url(packed)}`;
+}
+
+export async function readSnapshot(data) {
+  const json = new TextDecoder().decode(await pipe(fromB64url(data), new DecompressionStream("deflate-raw")));
+  const chat = JSON.parse(json);
+  if (!chat?.report?.markdown) throw new Error("bad");
+  return chat;
+}
+
 /** The report header: headline, Brandon's byline, sharing and the two summary lists. */
 export function ReportHeader(props) {
   return (

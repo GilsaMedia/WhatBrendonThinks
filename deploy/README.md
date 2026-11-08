@@ -41,7 +41,9 @@ The API origin is `https://gilsa.tail016c50.ts.net:8443`. Only tailnet members c
 
 ### Opening the API to the internet (for share links)
 
-Share links only work for people who can reach the API. To let anyone open them, expose the existing 8443 listener with Tailscale Funnel; the address stays the same, so the frontend needs no change.
+Share links made with the "Share report" button carry the whole report, compressed, in the link's `#` fragment (`#/v/...`). They open on the GitHub Pages site with no account and without reaching the API, so they work even while the API stays private. Because the report is inside the link, such a link cannot be turned off later.
+
+Older server share links (`#/s/...`) only work for people who can reach the API. To let anyone open those, expose the existing 8443 listener with Tailscale Funnel; the address stays the same, so the frontend needs no change.
 
 1. Create every account you need, then add `BRANDON_SIGNUPS=closed` to `deploy/.env` and restart the API. With sign-ups closed, strangers cannot create accounts or run reports on your AI bill; logins, reports and share links keep working.
 2. Allow Funnel for this machine in the Tailscale admin console (Access controls: a `nodeAttrs` entry granting `funnel`), or follow the link `tailscale funnel` prints.

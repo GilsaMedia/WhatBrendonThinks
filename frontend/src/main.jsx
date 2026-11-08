@@ -41,6 +41,8 @@ import {
   parseReport,
   isRtl,
   shareLink,
+  snapshotLink,
+  readSnapshot,
   useReportText,
 } from "./story.jsx";
 import "./style.css";
@@ -611,6 +613,9 @@ function App() {
       )}
       {route.startsWith("/s/") && (
         <SharedReport token={route.split("/")[2]} navigate={navigate} notify={notify} />
+      )}
+      {route.startsWith("/v/") && (
+        <SharedReport key={route} data={route.slice(3)} navigate={navigate} notify={notify} />
       )}
       {route.startsWith("/report/") && (
         <Report
@@ -1829,19 +1834,26 @@ function ReportFootnote({ report, language }) {
 }
 
 // A report opened from its share link: read-only, no account, no follow-ups.
-function SharedReport({ token, navigate, notify }) {
+// `data` is a self-contained link (#/v/...) that opens without any server;
+// `token` is an older server share link (#/s/...).
+function SharedReport({ token, data, navigate, notify }) {
   const [chat, setChat] = useState(null),
     [error, setError] = useState(""),
     [phase, setPhase] = useState(null);
-  const storyKey = "brandon-shared-" + token;
+  const storyKey = "brandon-shared-" + (token || data.slice(0, 40));
   useEffect(() => {
     setChat(null);
     setPhase(null);
     setError("");
-    api("/shared/" + token)
+    (data
+      ? readSnapshot(data).catch(() => {
+          throw new Error("This link is incomplete. Ask for the link again and copy all of it.");
+        })
+      : api("/shared/" + token)
+    )
       .then(setChat)
       .catch((e) => setError(e.message));
-  }, [token]);
+  }, [token, data]);
   useEffect(() => {
     if (!chat || phase) return;
     let seen = false;
@@ -1895,7 +1907,7 @@ function SharedReport({ token, navigate, notify }) {
           notify={notify}
           Markdown={Markdown}
           shared
-          getShareUrl={async () => shareLink(token)}
+          getShareUrl={async () => (data ? location.href : shareLink(token))}
         />
         <Markdown text={parsed.body} />
         <ReportContents chat={chat} parsed={parsed} />
@@ -2129,13 +2141,7 @@ function Report({ id, navigate, currentUser, auth, notify, setModal }) {
                 parsed={parsed}
                 notify={notify}
                 Markdown={Markdown}
-                getShareUrl={async () => {
-                  const { token } = await api("/chats/" + id + "/share", {
-                    method: "POST",
-                  });
-                  setChat((c) => ({ ...c, share_token: token }));
-                  return shareLink(token);
-                }}
+                getShareUrl={() => snapshotLink(chat)}
                 onStopSharing={async () => {
                   try {
                     await api("/chats/" + id + "/share", { method: "DELETE" });
